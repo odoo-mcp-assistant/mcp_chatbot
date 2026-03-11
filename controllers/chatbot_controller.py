@@ -164,3 +164,36 @@ class MCPChatbotController(http.Controller):
             'reply':         ai_reply,
             'session_token': session_token,
         }
+
+
+    # ------------------------------------------------------------------ #
+    # POST /mcp_chatbot/session_status                                     #
+    # ------------------------------------------------------------------ #
+
+    @http.route(
+        '/mcp_chatbot/session_status',
+        type='json',
+        auth='public',
+        methods=['POST'],
+        website=True,
+        csrf=False,
+    )
+    def session_status(self, session_token: str, **kwargs):
+        """
+        Returns whether the session for the given token is still open.
+        Used by the frontend on page load to detect if the idle-timeout
+        cron has closed the session, so localStorage can be wiped.
+
+        Response: { "status": "open" | "closed" | "not_found" }
+        """
+        if not session_token:
+            return {'status': 'not_found'}
+
+        session = request.env['mcp.chatbot.session'].sudo().search([
+            ('session_token', '=', session_token),
+        ], limit=1)
+
+        if not session:
+            return {'status': 'not_found'}
+
+        return {'status': session.state}

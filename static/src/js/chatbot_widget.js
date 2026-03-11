@@ -3,30 +3,41 @@
  *
  * Key design decisions:
  *
- * 1. Session token is stored in localStorage (not sessionStorage).
- *    This means the token — and therefore the open session — survives
- *    page navigation and browser-tab restores. The user's conversation
- *    history is preserved when they move between pages.
+ * 1. Session token and history are stored in localStorage keyed by
+ *    partner ID (or 'guest' for anonymous). This means switching users
+ *    in the same browser starts a clean conversation for each user.
  *
- * 2. Sessions are NEVER closed from the frontend. Closing the widget
- *    only hides it visually. The backend cron job (runs every 10 min)
- *    closes sessions that have been idle for 30+ minutes.
+ * 2. On every page load, the widget polls /mcp_chatbot/session_status
+ *    with the current token. If the backend says the session is closed
+ *    (idle timeout reached), localStorage is cleared and the widget
+ *    resets to a fresh state.
  *
- * 3. Chat history (the rendered bubbles) is stored in localStorage so
- *    the widget re-renders the conversation when the user navigates to
- *    a new page and re-opens the widget.
+ * 3. Sessions are NEVER closed from the frontend explicitly. The backend
+ *    cron closes them after 30 min of inactivity.
  */
 
 (function () {
     'use strict';
 
     // ──────────────────────────────────────────────────────────────
-    // Constants
+    // Resolve current user identity from Odoo's session
+    // window.odoo.session_info is available on every website page
     // ──────────────────────────────────────────────────────────────
 
-    var STORAGE_TOKEN_KEY   = 'mcp_chatbot_session_token';
-    var STORAGE_HISTORY_KEY = 'mcp_chatbot_history';       // rendered message history
-    var STORAGE_OPEN_KEY    = 'mcp_chatbot_open';          // whether window was open
+    var partnerId = (
+        window.__odoo &&
+        window.__odoo.session_info &&
+        window.__odoo.session_info.partner_id
+    ) || 'guest';
+
+    // ──────────────────────────────────────────────────────────────
+    // localStorage keys — scoped per user so switching users gives
+    // a clean slate without touching the other user's history
+    // ──────────────────────────────────────────────────────────────
+
+    var STORAGE_TOKEN_KEY   = 'mcp_chatbot_token_'   + partnerId;
+    var STORAGE_HISTORY_KEY = 'mcp_chatbot_history_' + partnerId;
+    var STORAGE_OPEN_KEY    = 'mcp_chatbot_open_'    + partnerId;
 
     // ──────────────────────────────────────────────────────────────
     // Helpers
@@ -43,11 +54,6 @@
         });
     }
 
-    /**
-     * Get-or-create the session token from localStorage.
-     * localStorage persists across page navigations and tab restores,
-     * keeping the same backend session alive while the user browses.
-     */
     function getSessionToken() {
         var token = localStorage.getItem(STORAGE_TOKEN_KEY);
         if (!token) {
@@ -57,11 +63,6 @@
         return token;
     }
 
-    /**
-     * Persist the rendered chat history so it can be restored after
-     * the user navigates to another page.
-     * history: array of { role: 'user'|'assistant', text: string }
-     */
     function saveHistory(history) {
         try {
             localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(history));
@@ -75,8 +76,19 @@
     }
 
     /**
-     * JSON-RPC 2.0 call to an Odoo JSON controller endpoint.
+     * Wipe all localStorage keys for the current user and generate a
+     * fresh session token. Called when the backend reports the session
+     * has been closed by the idle-timeout cron.
      */
+    function resetSession() {
+        localStorage.removeItem(STORAGE_TOKEN_KEY);
+        localStorage.removeItem(STORAGE_HISTORY_KEY);
+        localStorage.removeItem(STORAGE_OPEN_KEY);
+        // Re-generate a fresh token immediately so the next message
+        // creates a new backend session automatically
+        localStorage.setItem(STORAGE_TOKEN_KEY, uuidv4());
+    }
+
     function jsonRpc(url, params) {
         return fetch(url, {
             method: 'POST',
@@ -106,7 +118,6 @@
         container.appendChild(bubble);
         container.scrollTop = container.scrollHeight;
 
-        // Persist to localStorage history array
         if (history) {
             history.push({ role: role, text: text });
             saveHistory(history);
@@ -123,11 +134,27 @@
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Session status check
+    // Asks the backend if the current token's session is still open.
+    // If closed (idle timeout), wipes localStorage and resets the UI.
+    // ──────────────────────────────────────────────────────────────
+
+    function checkSessionStatus(token, onExpired) {
+        jsonRpc('/mcp_chatbot/session_status', { session_token: token })
+            .then(function (result) {
+                if (result && result.status === 'closed') {
+                    resetSession();
+                    if (onExpired) { onExpired(); }
+                }
+            })
+            .catch(function () { /* network error — keep existing state */ });
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Widget initialisation
     // ──────────────────────────────────────────────────────────────
 
     function initChatbot() {
-        // Guard — only initialise once even if snippet appears multiple times
         if (window.__mcpChatbotInit) { return; }
         window.__mcpChatbotInit = true;
 
@@ -138,12 +165,20 @@
         var input    = document.getElementById('mcp_chatbot_input');
         var sendBtn  = document.getElementById('mcp_chatbot_send');
 
-        // Bail out if the snippet is not on this page
         if (!bubble || !chatWin || !msgArea || !input || !sendBtn) { return; }
 
         var sessionToken = getSessionToken();
-        var chatHistory  = loadHistory();   // in-memory copy, kept in sync with localStorage
+        var chatHistory  = loadHistory();
         var isOpen = localStorage.getItem(STORAGE_OPEN_KEY) === '1';
+
+        // ── Check if backend session expired on page load ─────────
+        checkSessionStatus(sessionToken, function () {
+            // Session was closed by cron — reset everything
+            sessionToken = getSessionToken();   // fresh token
+            chatHistory  = [];
+            isOpen       = false;
+            chatWin.classList.add('d-none');
+        });
 
         // ── Restore previous conversation ─────────────────────────
         function restoreHistory() {
@@ -156,15 +191,12 @@
             });
             msgArea.scrollTop = msgArea.scrollHeight;
 
-            // Show welcome only if this is a brand new conversation
             if (chatHistory.length === 0) {
                 appendMessage(msgArea, 'assistant', 'Hello! How can I help you today?', chatHistory);
             }
         }
 
-        // ── Open / close (visual only — does NOT end the session) ─
-        // Sessions are closed exclusively by the backend cron after
-        // 30 minutes of inactivity (last_activity field).
+        // ── Open / close ──────────────────────────────────────────
         function openWindow() {
             chatWin.classList.remove('d-none');
             isOpen = true;
@@ -177,8 +209,6 @@
             chatWin.classList.add('d-none');
             isOpen = false;
             localStorage.setItem(STORAGE_OPEN_KEY, '0');
-            // NOTE: intentionally NOT calling any end_session endpoint.
-            // The backend cron closes sessions after 30 min of inactivity.
         }
 
         bubble.addEventListener('click', function () {
@@ -189,7 +219,6 @@
             closeBtn.addEventListener('click', closeWindow);
         }
 
-        // Restore open state after page navigation
         if (isOpen) {
             openWindow();
         }
@@ -236,7 +265,7 @@
     }
 
     // ──────────────────────────────────────────────────────────────
-    // Bootstrap — wait for DOM ready
+    // Bootstrap
     // ──────────────────────────────────────────────────────────────
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initChatbot);
