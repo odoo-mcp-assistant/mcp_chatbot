@@ -13,7 +13,7 @@
 
             <!-- ── Chat bubble trigger ──────────────────────────── -->
             <div id="mcp_chatbot_bubble" class="mcp-chatbot-bubble" title="Chat with us">
-                <img src="/mcp_chatbot/static/src/img/chatbot_icon.png" 
+                <img src="/mcp_chatbot/static/src/img/chatbot_icon" 
                     alt="Chat" 
                     style="width: 100%; height: 100%; object-fit: cover; display: block;"/>
             </div>
@@ -57,7 +57,7 @@
         <xpath expr="//snippets[@id='snippet_groups']//t[@snippet-group][last()]" position="before">
             <t t-snippet="mcp_chatbot.snippet_mcp_chatbot"
                string="MCP AI Chatbot"
-               t-thumbnail="/mcp_chatbot/static/src/img/chatbot_icon.png">
+               t-thumbnail="/mcp_chatbot/static/src/img/chatbot_icon">
                 <keywords>chatbot, chat, ai, assistant, mcp</keywords>
             </t>
         </xpath>
