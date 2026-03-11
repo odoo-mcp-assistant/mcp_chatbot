@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Session list view                                             -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_session_list" model="ir.ui.view">
+        <field name="name">mcp.chatbot.session.list</field>
+        <field name="model">mcp.chatbot.session</field>
+        <field name="arch" type="xml">
+            <list string="Chatbot Sessions" decoration-muted="state == 'closed'">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="session_token"/>
+                <field name="message_count"/>
+                <field name="last_activity"/>
+                <field name="state"/>
+                <field name="create_date" string="Started"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Session form view                                             -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_session_form" model="ir.ui.view">
+        <field name="name">mcp.chatbot.session.form</field>
+        <field name="model">mcp.chatbot.session</field>
+        <field name="arch" type="xml">
+            <form string="Chatbot Session">
+                <header>
+                    <button name="action_close" string="Close Session"
+                            type="object" class="btn-secondary"
+                            invisible="state == 'closed'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="open,closed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Visitor">
+                            <field name="partner_id"/>
+                            <field name="session_token"/>
+                        </group>
+                        <group string="Statistics">
+                            <field name="message_count"/>
+                            <field name="last_activity"/>
+                            <field name="last_summarized_count"/>
+                            <field name="create_date" string="Started"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Messages">
+                            <field name="message_ids" readonly="1">
+                                <list>
+                                    <field name="create_date" string="Time"/>
+                                    <field name="role"/>
+                                    <field name="content"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Conversation Summary">
+                            <field name="history_summary" readonly="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Session search view                                           -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_session_search" model="ir.ui.view">
+        <field name="name">mcp.chatbot.session.search</field>
+        <field name="model">mcp.chatbot.session</field>
+        <field name="arch" type="xml">
+            <search string="Search Sessions">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="session_token"/>
+                <filter string="Open"   name="open"   domain="[('state','=','open')]"/>
+                <filter string="Closed" name="closed" domain="[('state','=','closed')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Visitor" name="group_partner" context="{'group_by': 'partner_id'}"/>
+                    <filter string="State"   name="group_state"   context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Action                                                        -->
+    <!-- ============================================================ -->
+    <record id="action_mcp_chatbot_sessions" model="ir.actions.act_window">
+        <field name="name">Chatbot Sessions</field>
+        <field name="res_model">mcp.chatbot.session</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_mcp_chatbot_session_search"/>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Top-level menu                                                -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_mcp_chatbot_root"
+              name="MCP Chatbot"
+              sequence="90"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_mcp_chatbot_sessions"
+              name="Sessions"
+              parent="menu_mcp_chatbot_root"
+              action="action_mcp_chatbot_sessions"
+              sequence="10"/>
+
+</odoo>

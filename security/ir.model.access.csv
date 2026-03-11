@@ -1,0 +1,9 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_mcp_chatbot_session_admin,mcp.chatbot.session admin,model_mcp_chatbot_session,base.group_system,1,1,1,1
+access_mcp_chatbot_session_user,mcp.chatbot.session user,model_mcp_chatbot_session,base.group_user,1,1,1,0
+access_mcp_chatbot_session_public,mcp.chatbot.session public,model_mcp_chatbot_session,,1,1,1,0
+access_mcp_chatbot_message_admin,mcp.chatbot.message admin,model_mcp_chatbot_message,base.group_system,1,1,1,1
+access_mcp_chatbot_message_user,mcp.chatbot.message user,model_mcp_chatbot_message,base.group_user,1,1,1,0
+access_mcp_chatbot_message_public,mcp.chatbot.message public,model_mcp_chatbot_message,,1,1,1,0
+access_mcp_client_service_user,mcp.client.service user,model_mcp_client_service,base.group_user,1,0,0,0
+access_mcp_client_service_public,mcp.client.service public,model_mcp_client_service,,1,0,0,0

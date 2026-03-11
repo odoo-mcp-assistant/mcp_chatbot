@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Snippet definition                                           -->
+    <!-- ============================================================ -->
+    <template id="snippet_mcp_chatbot" name="MCP AI Chatbot">
+        <section class="s_mcp_chatbot"
+                 data-snippet="s_mcp_chatbot"
+                 data-name="MCP AI Chatbot"
+                 data-drop-in=".odoo-editor-editable, #wrapwrap"
+                 data-drop-near="section, .s_mcp_chatbot">
+
+            <!-- ── Chat bubble trigger ──────────────────────────── -->
+            <div id="mcp_chatbot_bubble" class="mcp-chatbot-bubble" title="Chat with us">
+                <img src="/mcp_chatbot/static/src/img/chatbot_icon.png" 
+                    alt="Chat" 
+                    style="width: 100%; height: 100%; object-fit: cover; display: block;"/>
+            </div>
+
+            <!-- ── Chat window ──────────────────────────────────── -->
+            <div id="mcp_chatbot_window" class="mcp-chatbot-window d-none">
+
+                <!-- Header -->
+                <div class="mcp-chatbot-header">
+                    <span class="mcp-chatbot-title">AI Assistant</span>
+                    <button class="mcp-chatbot-close" title="Close">
+                        <i class="fa fa-times"/>
+                    </button>
+                </div>
+
+                <!-- Message area -->
+                <div id="mcp_chatbot_messages" class="mcp-chatbot-messages">
+                    <!-- Messages are injected by chatbot_widget.js -->
+                </div>
+
+                <!-- Input area -->
+                <div class="mcp-chatbot-input-area">
+                    <input id="mcp_chatbot_input"
+                           type="text"
+                           class="mcp-chatbot-input"
+                           placeholder="Type your message..."
+                           autocomplete="off"/>
+                    <button id="mcp_chatbot_send" class="mcp-chatbot-send" title="Send">
+                        <i class="fa fa-paper-plane"/>
+                    </button>
+                </div>
+
+            </div>
+        </section>
+    </template>
+
+    <!-- ============================================================ -->
+    <!-- Register snippet in the Website Builder (Odoo 18)            -->
+    <!-- ============================================================ -->
+    <template id="snippets_mcp_chatbot" inherit_id="website.snippets" name="MCP Chatbot Snippet">
+        <xpath expr="//snippets[@id='snippet_groups']//t[@snippet-group][last()]" position="before">
+            <t t-snippet="mcp_chatbot.snippet_mcp_chatbot"
+               string="MCP AI Chatbot"
+               t-thumbnail="/mcp_chatbot/static/src/img/chatbot_icon.png">
+                <keywords>chatbot, chat, ai, assistant, mcp</keywords>
+            </t>
+        </xpath>
+    </template>
+
+</odoo>
