@@ -151,6 +151,9 @@ class ChatbotSession(models.Model):
 
     def action_close(self):
         """Close the session."""
+        print("="*60)
+        print(f"Session ({self.name}) is closed")
+        print("="*60)
         self.write({'state': 'closed'})
 
     def touch_activity(self):

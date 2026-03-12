@@ -1,3 +1,4 @@
+# mcp_chatbot/controllers/chatbot_controller.py
 import logging
 
 from odoo import http
@@ -7,12 +8,6 @@ _logger = logging.getLogger(__name__)
 
 
 class MCPChatbotController(http.Controller):
-    """
-    JSON endpoints consumed by the website chatbot widget.
-
-    All routes live under /mcp_chatbot/ to avoid collisions with
-    built-in livechat routes.
-    """
 
     # ------------------------------------------------------------------ #
     # POST /mcp_chatbot/message                                            #
@@ -21,30 +16,19 @@ class MCPChatbotController(http.Controller):
     @http.route(
         '/mcp_chatbot/message',
         type='json',
-        auth='public',          # Accessible to unauthenticated website visitors
+        auth='public',
         methods=['POST'],
         website=True,
         csrf=False,
     )
-    def receive_message(self, session_token: str, message: str, **kwargs):
+    def receive_message(self, session_token: str, message: str, welcome: str = None, **kwargs):
         """
-        Receive a user message from the website widget, run it through the
-        MCP pipeline, persist both turns, and return the assistant reply.
-
-        Request body (JSON):
-            {
-                "session_token": "<uuid>",
-                "message":       "<plain text from visitor>"
-            }
-
-        Response body (JSON):
-            {
-                "reply":         "<assistant plain text>",
-                "session_token": "<uuid>"
-            }
+        Receive a user message. Creates the session on the first real
+        user message (lazy creation). If 'welcome' is provided it means
+        this is the first message — persist the welcome text first so
+        the LLM has full context.
         """
 
-        # ── Validate input ──────────────────────────────────────────────
         if not session_token or not message or not message.strip():
             return {'error': 'session_token and message are required'}
 
@@ -55,83 +39,79 @@ class MCPChatbotController(http.Controller):
         if not request.env.user._is_public():
             partner_id = request.env.user.partner_id.id
 
-        # ── Get or create session ────────────────────────────────────────
+        # ── Guard: if token belongs to a different user, reject it ───────
+        # This prevents anonymous users from hijacking a logged-in session
+        # when sessionStorage is not cleared on logout.
+        existing = request.env['mcp.chatbot.session'].sudo().search([
+            ('session_token', '=', session_token),
+            ('state', '=', 'open'),
+        ], limit=1)
+
+        if existing:
+            existing_partner = existing.partner_id.id or None
+            if existing_partner != partner_id:
+                # Token belongs to a different user — refuse to add messages
+                _logger.warning(
+                    'mcp_chatbot: token %s belongs to partner %s but current user is partner %s — rejecting',
+                    session_token, existing_partner, partner_id
+                )
+                return {'error': 'session_mismatch', 'session_token': session_token}
+
+        # ── Get or create session (lazy — created on first real message) ─
         Session = request.env['mcp.chatbot.session'].sudo()
         session = Session.get_or_create_session(session_token, partner_id=partner_id)
 
         # ── Touch activity — resets the idle timeout clock ───────────────
         session.touch_activity()
 
-        # ── Persist user message ─────────────────────────────────────────
         Message = request.env['mcp.chatbot.message'].sudo()
+
+        # ── Persist welcome as first record if this is the first message ─
+        if welcome and len(session.message_ids) == 0:
+            Message.create({
+                'session_id': session.id,
+                'role':       'assistant',
+                'content':    welcome.strip(),
+            })
+
+        # ── Persist user message ─────────────────────────────────────────
         Message.create({
             'session_id': session.id,
             'role':       'user',
             'content':    user_message,
         })
 
-        # ── Build conversation history for the LLM ───────────────────────
-        # We mirror the summarisation logic from odoo_mcp_addon:
-        # every 10 unsummarised messages we compress the history first.
+        # ── Build conversation history ───────────────────────────────────
         mcp_service = request.env['mcp.client.service'].sudo()
 
-        messages_count = len(session.message_ids)
+        messages_count     = len(session.message_ids)
         unsummarized_count = messages_count - session.last_summarized_count
 
         if unsummarized_count >= 10:
-
-            # Get the messages to summarize
             messages_to_summarize = session.get_conversation_history()[-unsummarized_count:]
-
-            #Get the content of the existing summary
             summary_prefix = [{
                 'role':    'system',
-                'content': (
-                    f'Summary of the conversation so far, keep it as it is: '
-                    f'{session.history_summary or ""}'
-                ),
+                'content': f'Summary of the conversation so far, keep it as it is: {session.history_summary or ""}',
             }]
-
-            # Generate a new summary — summarize_history lives on mcp.client.service
             new_summary = mcp_service.summarize_history(summary_prefix + messages_to_summarize)
-
-            #Update the session summary and reset the unsummarized counter
             session.sudo().write({
                 'history_summary':       new_summary,
                 'last_summarized_count': messages_count,
             })
-
-            #Recalculate after summarizing so the fetch below uses the updated value
             unsummarized_count = 0
 
-            """
-                messages_count = 8  → unsummarized = 8  → no summary → fetch 8 unsummarized
-                messages_count = 10 → unsummarized = 10 → summarize  → recalculate = 0 → fetch 0 unsummarized
-                messages_count = 14 → unsummarized = 4  → no summary → fetch 4 unsummarized
-                messages_count = 20 → unsummarized = 10 → summarize  → recalculate = 0 → fetch 0 unsummarized
-            """
-
-        #Get the unsummarized messages (tail only)
         unsummarized_messages = (
             session.get_conversation_history()[-unsummarized_count:]
             if unsummarized_count > 0 else []
         )
 
-        #Get the content of the summary
-        summary_content = [{
-            'role':    'system',
-            'content': (
-                f'Summary of the conversation so far, keep it as it is: '
-                f'{session.history_summary or ""}'
-            ),
-        }]
+        conversation_history = [
+            {
+                'role':    'system',
+                'content': f'Summary of the conversation so far, keep it as it is: {session.history_summary or ""}',
+            }
+        ] + unsummarized_messages
 
-        #Add the summary to the unsummarized messages
-        conversation_history = summary_content + unsummarized_messages
-
-        # ── ADD USER GENERAL INFO TO CONVERSATION HISTORY ───────────────
-        # Insert a system message with the visitor identity so the LLM
-        # can personalise its reply (mirrors user_info injection in mail_message.py)
         user_info = {
             'id':   partner_id,
             'name': request.env.user.partner_id.name if partner_id else 'Anonymous Visitor',
@@ -153,47 +133,105 @@ class MCPChatbotController(http.Controller):
             _logger.error('mcp_chatbot: MCP pipeline error: %s', exc)
             ai_reply = 'Sorry, I encountered an error. Please try again.'
 
-        # ── Persist assistant message ────────────────────────────────────
+        # ── Persist assistant reply ──────────────────────────────────────
         Message.create({
             'session_id': session.id,
             'role':       'assistant',
             'content':    ai_reply,
         })
 
-        return {
-            'reply':         ai_reply,
-            'session_token': session_token,
-        }
-
+        return {'reply': ai_reply, 'session_token': session_token}
 
     # ------------------------------------------------------------------ #
-    # POST /mcp_chatbot/session_status                                     #
+    # POST /mcp_chatbot/welcome                                            #
     # ------------------------------------------------------------------ #
 
     @http.route(
-        '/mcp_chatbot/session_status',
+        '/mcp_chatbot/welcome',
         type='json',
         auth='public',
         methods=['POST'],
         website=True,
         csrf=False,
     )
-    def session_status(self, session_token: str, **kwargs):
+    def welcome(self, session_token: str, **kwargs):
         """
-        Returns whether the session for the given token is still open.
-        Used by the frontend on page load to detect if the idle-timeout
-        cron has closed the session, so localStorage can be wiped.
+        Generate a personalised welcome message WITHOUT creating a session.
+        Session is created lazily on the first real user message.
+        """
+        partner_name = 'there'
+        if not request.env.user._is_public():
+            partner_name = request.env.user.partner_id.name
 
-        Response: { "status": "open" | "closed" | "not_found" }
+        welcome_prompt = (
+            f"Generate a short, friendly, and professional welcome message "
+            f"for a user named {partner_name}. "
+            f"Introduce yourself as an AI assistant integrated with Odoo ERP. "
+            f"Ask how you can help them today. Keep it to 2 sentences maximum."
+        )
+
+        mcp_service = request.env['mcp.client.service'].sudo()
+
+        try:
+            welcome_msg = mcp_service.process_message(welcome_prompt, [])
+        except Exception as exc:
+            _logger.error('mcp_chatbot: welcome generation error: %s', exc)
+            welcome_msg = f'Hello {partner_name}! How can I help you today?'
+
+        # No session created here — browser only
+        return {'welcome': welcome_msg}
+
+    # ------------------------------------------------------------------ #
+    # POST /mcp_chatbot/history                                            #
+    # ------------------------------------------------------------------ #
+
+    @http.route(
+        '/mcp_chatbot/history',
+        type='json',
+        auth='public',
+        methods=['POST'],
+        website=True,
+        csrf=False,
+    )
+    def history(self, session_token: str, **kwargs):
+        """
+        Return the full message history for a session token.
+        Called by the frontend every time the widget is opened.
+        This is the single source of truth — no history in localStorage.
+
+        Returns:
+            { "status": "open", "messages": [...] }
+            { "status": "closed" }
+            { "status": "not_found" }
         """
         if not session_token:
-            return {'status': 'not_found'}
+            return {'status': 'not_found', 'messages': []}
 
         session = request.env['mcp.chatbot.session'].sudo().search([
             ('session_token', '=', session_token),
         ], limit=1)
 
         if not session:
-            return {'status': 'not_found'}
+            return {'status': 'not_found', 'messages': []}
 
-        return {'status': session.state}
+        if session.state == 'closed':
+            return {'status': 'closed', 'messages': []}
+
+        # ── Guard: session belongs to a different user ───────────────────
+        partner_id = None
+        if not request.env.user._is_public():
+            partner_id = request.env.user.partner_id.id
+
+        existing_partner = session.partner_id.id or None
+        if existing_partner != partner_id:
+            # Return mismatch so the frontend resets the token
+            return {'status': 'mismatch', 'messages': []}
+
+        messages = []
+        for msg in session.message_ids.sorted('create_date'):
+            messages.append({
+                'role':    msg.role,
+                'content': msg.content,
+            })
+
+        return {'status': 'open', 'messages': messages}
