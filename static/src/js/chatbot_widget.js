@@ -120,6 +120,24 @@
             return indicator;
         }
 
+        function showCompactingBar(container) {
+            var bar = document.createElement('div');
+            bar.className = 'mcp-compacting-bar';
+            bar.innerHTML = (
+                '<span>Compacting conversation...</span>' +
+                '<div class="mcp-compacting-bar-track">' +
+                    '<div class="mcp-compacting-bar-fill"></div>' +
+                '</div>'
+            );
+            container.appendChild(bar);
+            container.scrollTop = container.scrollHeight;
+
+            // Remove after 5 seconds
+            setTimeout(function () {
+                if (bar.parentNode) { bar.parentNode.removeChild(bar); }
+            }, 5000);
+        }
+
         // ──────────────────────────────────────────────────────────────
         // Load history from backend
         // ──────────────────────────────────────────────────────────────
@@ -244,7 +262,49 @@
                 input.value = '';
                 sendBtn.disabled = true;
 
-                var typingEl = showTyping(msgArea);
+                // ── Show compacting bar every 10 messages ─────────────────
+                // Count existing messages in the DOM (excluding typing indicators)
+                var msgCount = msgArea.querySelectorAll('.mcp-chatbot-msg.user, .mcp-chatbot-msg.assistant').length;
+                var isCompacting = msgCount > 0 && msgCount % 10 === 0;
+                var compactStart = Date.now();
+
+                if (isCompacting) {
+                    showCompactingBar(msgArea);
+                }
+
+                // Hold the RPC result here until we are ready to display it
+                var pendingReply   = null;
+                var pendingError   = false;
+                var rpcDone        = false;
+                var typingEl       = null;
+
+                function displayReply() {
+                    if (typingEl) { typingEl.remove(); }
+                    if (pendingError) {
+                        appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
+                    } else if (pendingReply && pendingReply.error === 'session_mismatch') {
+                        clearSessionToken();
+                        sessionToken = getSessionToken();
+                        welcomeText  = null;
+                        msgArea.innerHTML = '';
+                        fetchWelcome(msgArea, null);
+                        appendMessage(msgArea, 'assistant', 'Your session was reset. Please resend your message.');
+                    } else {
+                        appendMessage(msgArea, 'assistant', pendingReply && pendingReply.reply
+                            ? pendingReply.reply
+                            : 'Sorry, I could not get a reply.');
+                    }
+                    sendBtn.disabled = false;
+                    input.focus();
+                }
+
+                // Show typing indicator — immediately if no compacting, after 5s if compacting
+                var typingDelay = isCompacting ? 5000 : 0;
+                setTimeout(function () {
+                    typingEl = showTyping(msgArea);
+                    // If RPC already finished while we were waiting, display immediately
+                    if (rpcDone) { displayReply(); }
+                }, typingDelay);
 
                 var payload = { session_token: sessionToken, message: text };
 
@@ -256,34 +316,17 @@
 
                 jsonRpc('/mcp_chatbot/message', payload)
                     .then(function (result) {
-                        typingEl.remove();
-
-                        // Backend rejected — token belonged to another user
-                        if (result && result.error === 'session_mismatch') {
-                            clearSessionToken();
-                            sessionToken = getSessionToken();
-                            welcomeText  = null;
-                            msgArea.innerHTML = '';
-                            fetchWelcome(msgArea, null);
-                            appendMessage(msgArea, 'assistant', 'Your session was reset. Please resend your message.');
-                            sendBtn.disabled = false;
-                            input.focus();
-                            return;
-                        }
-
-                        var reply = (result && result.reply)
-                            ? result.reply
-                            : 'Sorry, I could not get a reply.';
-                        appendMessage(msgArea, 'assistant', reply);
+                        pendingReply = result;
                     })
                     .catch(function (err) {
-                        typingEl.remove();
-                        appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
+                        pendingError = true;
                         console.error('[mcp_chatbot] RPC error:', err);
                     })
                     .finally(function () {
-                        sendBtn.disabled = false;
-                        input.focus();
+                        rpcDone = true;
+                        // Only display if typing indicator is already visible
+                        // (i.e. the 5s compacting delay has already passed)
+                        if (typingEl) { displayReply(); }
                     });
             }
 
