@@ -288,7 +288,7 @@ class MCPClientService(models.AbstractModel):
         if not history:
             return ""
 
-        API_KEY = os.getenv("OPENAI_API_KEY", "")
+        API_KEY = os.getenv("OPENAI_API_KEY", "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")
         client = OpenAI(api_key=API_KEY, base_url="https://api.groq.com/openai/v1")
         model_name = os.getenv("OPENAI_MODEL", "llama-3.3-70b-versatile")
 
