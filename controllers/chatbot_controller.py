@@ -28,7 +28,6 @@ class MCPChatbotController(http.Controller):
         this is the first message — persist the welcome text first so
         the LLM has full context.
         """
-
         if not session_token or not message or not message.strip():
             return {'error': 'session_token and message are required'}
 
@@ -40,8 +39,6 @@ class MCPChatbotController(http.Controller):
             partner_id = request.env.user.partner_id.id
 
         # ── Guard: if token belongs to a different user, reject it ───────
-        # This prevents anonymous users from hijacking a logged-in session
-        # when sessionStorage is not cleared on logout.
         existing = request.env['mcp.chatbot.session'].sudo().search([
             ('session_token', '=', session_token),
             ('state', '=', 'open'),
@@ -50,18 +47,15 @@ class MCPChatbotController(http.Controller):
         if existing:
             existing_partner = existing.partner_id.id or None
             if existing_partner != partner_id:
-                # Token belongs to a different user — refuse to add messages
                 _logger.warning(
                     'mcp_chatbot: token %s belongs to partner %s but current user is partner %s — rejecting',
                     session_token, existing_partner, partner_id
                 )
                 return {'error': 'session_mismatch', 'session_token': session_token}
 
-        # ── Get or create session (lazy — created on first real message) ─
+        # ── Get or create session ────────────────────────────────────────
         Session = request.env['mcp.chatbot.session'].sudo()
         session = Session.get_or_create_session(session_token, partner_id=partner_id)
-
-        # ── Touch activity — resets the idle timeout clock ───────────────
         session.touch_activity()
 
         Message = request.env['mcp.chatbot.message'].sudo()
@@ -81,7 +75,7 @@ class MCPChatbotController(http.Controller):
             'content':    user_message,
         })
 
-        # ── Build conversation history ───────────────────────────────────
+        # ── Build conversation history (short-term + summarization) ──────
         mcp_service = request.env['mcp.client.service'].sudo()
 
         messages_count     = len(session.message_ids)
@@ -112,14 +106,13 @@ class MCPChatbotController(http.Controller):
             }
         ] + unsummarized_messages
 
+        # ── Identity context injection ───────────────────────────────────
         if partner_id:
             identity_msg = (
                 f"IMPORTANT CONTEXT — current authenticated user: "
                 f"name='{request.env.user.partner_id.name}', "
                 f"partner_id={partner_id}. "
-
                 "RULES you must follow strictly: "
-
                 "1. You already have full identity context. Never ask the user for any personal information — "
                 "2. always inject it silently into tool calls when needed. "
                 "3. Never expose raw technical values like IDs to the user."
@@ -127,25 +120,21 @@ class MCPChatbotController(http.Controller):
         else:
             identity_msg = (
                 "IMPORTANT CONTEXT — current user: not logged in (anonymous visitor). "
-
                 "RULES you must follow strictly: "
-
                 "1. You have no personal information about this visitor. "
                 "2. If they ask about personal data such as orders or invoices, "
                 "3. do not call any tool — tell them to log in first. "
                 "4. You can still answer general questions about products and pricing."
             )
 
-        conversation_history = [
-            {
-                'role':    'system',
-                'content': identity_msg,
-            }
-        ] + conversation_history
+        conversation_history = [{'role': 'system', 'content': identity_msg}] + conversation_history
+
+        # ── RAG: user_id for long-term memory ────────────────────────────
+        user_id = str(partner_id) if partner_id else f"anon_{session_token[:16]}"
 
         # ── Call MCP pipeline ────────────────────────────────────────────
         try:
-            ai_reply = mcp_service.process_message(user_message, conversation_history)
+            ai_reply = mcp_service.process_message(user_message, conversation_history, user_id=user_id)
         except Exception as exc:
             _logger.error('mcp_chatbot: MCP pipeline error: %s', exc)
             ai_reply = 'Sorry, I encountered an error. Please try again.'
@@ -195,7 +184,6 @@ class MCPChatbotController(http.Controller):
             _logger.error('mcp_chatbot: welcome generation error: %s', exc)
             welcome_msg = f'Hello {partner_name}! How can I help you today?'
 
-        # No session created here — browser only
         return {'welcome': welcome_msg}
 
     # ------------------------------------------------------------------ #
@@ -214,12 +202,12 @@ class MCPChatbotController(http.Controller):
         """
         Return the full message history for a session token.
         Called by the frontend every time the widget is opened.
-        This is the single source of truth — no history in localStorage.
 
         Returns:
-            { "status": "open", "messages": [...] }
-            { "status": "closed" }
-            { "status": "not_found" }
+            { "status": "open",      "messages": [...] }
+            { "status": "closed",    "messages": [] }
+            { "status": "not_found", "messages": [] }
+            { "status": "mismatch",  "messages": [] }
         """
         if not session_token:
             return {'status': 'not_found', 'messages': []}
@@ -234,21 +222,41 @@ class MCPChatbotController(http.Controller):
         if session.state == 'closed':
             return {'status': 'closed', 'messages': []}
 
-        # ── Guard: session belongs to a different user ───────────────────
+        # Guard: session belongs to a different user
         partner_id = None
         if not request.env.user._is_public():
             partner_id = request.env.user.partner_id.id
 
-        existing_partner = session.partner_id.id or None
-        if existing_partner != partner_id:
-            # Return mismatch so the frontend resets the token
+        if (session.partner_id.id or None) != partner_id:
             return {'status': 'mismatch', 'messages': []}
 
-        messages = []
-        for msg in session.message_ids.sorted('create_date'):
-            messages.append({
-                'role':    msg.role,
-                'content': msg.content,
-            })
+        messages = [
+            {'role': m.role, 'content': m.content}
+            for m in session.message_ids.sorted('create_date')
+        ]
 
         return {'status': 'open', 'messages': messages}
+
+    # ------------------------------------------------------------------ #
+    # POST /mcp_chatbot/close                                              #
+    # ------------------------------------------------------------------ #
+
+    @http.route(
+        '/mcp_chatbot/close',
+        type='json',
+        auth='public',
+        methods=['POST'],
+        website=True,
+        csrf=False,
+    )
+    def close_session(self, session_token: str = None, **kwargs):
+        """Close a session when the visitor closes the widget."""
+        if session_token:
+            session = request.env['mcp.chatbot.session'].sudo().search([
+                ('session_token', '=', session_token),
+                ('state', '=', 'open'),
+            ], limit=1)
+            if session:
+                session.action_close()
+
+        return {'status': 'closed'}
