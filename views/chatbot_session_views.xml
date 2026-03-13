@@ -31,7 +31,8 @@
                 <header>
                     <button name="action_close" string="Close Session"
                             type="object" class="btn-secondary"
-                            invisible="state == 'closed'"/>
+                            invisible="state == 'closed'"
+                            confirm="Are you sure you want to close this session? Once a session is closed, it cannot be reactivated."/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="open,closed"/>
                 </header>
@@ -61,7 +62,7 @@
                                 </list>
                             </field>
                         </page>
-                        <page string="Conversation Summary">
+                        <page string="Conversation Summary" invisible="not history_summary">
                             <field name="history_summary" readonly="1"/>
                         </page>
                     </notebook>
