@@ -114,26 +114,12 @@ class MCPChatbotController(http.Controller):
 
         if partner_id:
             identity_msg = (
-                f"IMPORTANT CONTEXT — current authenticated user: "
+                f"Current authenticated user: "
                 f"name='{request.env.user.partner_id.name}', "
-                f"partner_id={partner_id}. "
-
-                "RULES you must follow strictly: "
-
-                "1. You already have full identity context. Never ask the user for any personal information — "
-                "2. always inject it silently into tool calls when needed. "
-                "3. Never expose raw technical values like IDs to the user."
             )
         else:
             identity_msg = (
-                "IMPORTANT CONTEXT — current user: not logged in (anonymous visitor). "
-
-                "RULES you must follow strictly: "
-
-                "1. You have no personal information about this visitor. "
-                "2. If they ask about personal data such as orders or invoices, "
-                "3. do not call any tool — tell them to log in first. "
-                "4. You can still answer general questions about products and pricing."
+                "Current user: not logged in (anonymous visitor)."
             )
 
         conversation_history = [
@@ -145,7 +131,7 @@ class MCPChatbotController(http.Controller):
 
         # ── Call MCP pipeline ────────────────────────────────────────────
         try:
-            ai_reply = mcp_service.process_message(user_message, conversation_history)
+            ai_reply = mcp_service.process_message(user_message, conversation_history, partner_id)
         except Exception as exc:
             _logger.error('mcp_chatbot: MCP pipeline error: %s', exc)
             ai_reply = 'Sorry, I encountered an error. Please try again.'

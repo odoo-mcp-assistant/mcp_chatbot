@@ -186,6 +186,7 @@ class ChatbotSession(models.Model):
         Closes any open session whose last_activity is older than
         IDLE_TIMEOUT_MINUTES (default 30).
         """
+        self.ensure_one()
         IDLE_TIMEOUT_MINUTES = 30
         cutoff = fields.Datetime.now() - timedelta(minutes=IDLE_TIMEOUT_MINUTES)
         idle_sessions = self.search([

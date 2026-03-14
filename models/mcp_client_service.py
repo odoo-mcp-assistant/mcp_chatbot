@@ -31,7 +31,7 @@ _initialized = False                             # Flag to avoid double init
 
 
 SYSTEM_PROMPT = (
-    "You are an AI assistant integrated with an Odoo ERP system. "
+    "You are Kimoy an AI assistant integrated with an Odoo ERP system. "
     "You have access to a specific, fixed set of tools. You cannot perform any action that does not have a corresponding tool available to you. "
 
     # Tool discipline
@@ -147,7 +147,7 @@ async def _async_connect_to_client(server_url: str):
 # Async LLM + tool-call loop (uses OpenAI / Groq)
 # ---------------------------------------------------------------------------
 
-async def _async_process_message(user_message: str, history: list, model: str) -> str:
+async def _async_process_message(user_message: str, history: list, model: str, authenticated_partner_id=None) -> str:
     """
     Full MCP host logic: build conversation → call LLM (OpenAI/Groq) → handle tool calls
     → return final reply string.
@@ -161,7 +161,7 @@ async def _async_process_message(user_message: str, history: list, model: str) -
     conversation.append({"role": "user", "content": user_message})
 
     # --- OpenAI client setup ---
-    API_KEY = os.getenv("OPENAI_API_KEY", "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")
+    API_KEY = os.getenv("OPENAI_API_KEY", "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")
     client = OpenAI(
         api_key=API_KEY,
         base_url="https://api.groq.com/openai/v1"
@@ -189,6 +189,11 @@ async def _async_process_message(user_message: str, history: list, model: str) -
             tool_name = tool_call.function.name
             # Arguments are a JSON string; parse them
             args = json.loads(tool_call.function.arguments)
+
+            # INTERCEPTION LAYER - Enforce identity
+            # Override any partner_id parameter with the real one
+            if 'partner_id' in args:
+                args['partner_id'] = authenticated_partner_id
 
             _logger.info("MCP: calling tool '%s' with args %s", tool_name, args)
 
@@ -263,7 +268,7 @@ class MCPClientService(models.AbstractModel):
                 raise
 
     @api.model
-    def process_message(self, user_message: str, history: list) -> str:
+    def process_message(self, user_message: str, history: list, authenticated_partner_id=None) -> str:
         """
         Process a user message through the MCP host pipeline.
 
@@ -280,7 +285,7 @@ class MCPClientService(models.AbstractModel):
 
         try:
             reply = _run_async(
-                _async_process_message(user_message, history, model)
+                _async_process_message(user_message, history, model, authenticated_partner_id)
             )
             return reply
         except TimeoutError:
@@ -305,7 +310,7 @@ class MCPClientService(models.AbstractModel):
             return ""
 
         # --- OpenAI client setup ---
-        API_KEY = os.getenv("OPENAI_API_KEY", "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")
+        API_KEY = os.getenv("OPENAI_API_KEY", "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")
         client = OpenAI(
             api_key=API_KEY,
             base_url="https://api.groq.com/openai/v1"
