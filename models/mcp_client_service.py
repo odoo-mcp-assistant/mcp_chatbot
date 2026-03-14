@@ -152,7 +152,7 @@ async def _async_process_message(
 
     API_KEY = os.getenv("OPENAI_API_KEY", "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")
     client = OpenAI(api_key=API_KEY, base_url="https://api.groq.com/openai/v1")
-    model_name = model or "llama-3.3-70b-versatile"
+    model_name = model or "openai/gpt-oss-120b"
 
     response = client.chat.completions.create(
         model=model_name,
@@ -264,7 +264,7 @@ class MCPClientService(models.AbstractModel):
         """
         self.ensure_initialized()
 
-        model = os.getenv("OPENAI_MODEL", "llama-3.3-70b-versatile")
+        model = os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b")
         effective_prompt = system_prompt if system_prompt else SYSTEM_PROMPT
 
         try:
@@ -290,7 +290,7 @@ class MCPClientService(models.AbstractModel):
 
         API_KEY = os.getenv("OPENAI_API_KEY", "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")
         client = OpenAI(api_key=API_KEY, base_url="https://api.groq.com/openai/v1")
-        model_name = os.getenv("OPENAI_MODEL", "llama-3.3-70b-versatile")
+        model_name = os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b")
 
         messages = [
             {

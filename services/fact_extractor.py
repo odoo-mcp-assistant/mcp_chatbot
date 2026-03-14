@@ -15,7 +15,7 @@ from openai import OpenAI
 _logger = logging.getLogger(__name__)
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-EXTRACTION_MODEL = "llama-3.3-70b-versatile"
+EXTRACTION_MODEL = "openai/gpt-oss-120b"
 GROQ_API_KEY = "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"
 
 _SYSTEM_PROMPT = """You are a memory extraction assistant embedded in an Odoo ERP chatbot.
