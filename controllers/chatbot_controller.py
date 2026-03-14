@@ -202,14 +202,54 @@ class MCPChatbotController(http.Controller):
         Called by the frontend every time the widget is opened.
         This is the single source of truth — no history in localStorage.
 
+        For logged-in users, the backend first looks up their most recent open
+        session by partner_id. This ensures history is restored even when the
+        browser token is stale (e.g. after an anonymous session was created in
+        between, or the cron closed the old session and the token was wiped).
+        The real session_token is returned so the browser can adopt it.
+
         Returns:
-            { "status": "open", "messages": [...] }
-            { "status": "closed" }
-            { "status": "not_found" }
+            { "status": "open",      "messages": [...], "session_token": "..." }
+            { "status": "closed",    "messages": [] }
+            { "status": "not_found", "messages": [] }
+            { "status": "mismatch",  "messages": [] }
         """
         if not session_token:
             return {'status': 'not_found', 'messages': []}
 
+        # ── Resolve partner if logged in ────────────────────────────────────
+        partner_id = None
+        if not request.env.user._is_public():
+            partner_id = request.env.user.partner_id.id
+
+        # ── Authenticated users: recover session by partner_id first ────────
+        # This is the key fix: the DB is the source of truth for logged-in
+        # users, not the browser token. If Mitchell logs out, has an anonymous
+        # chat, then logs back in — his token in sessionStorage may be stale or
+        # gone, but his session still exists in the DB tied to his partner_id.
+        # We find it here and hand the correct token back to the browser.
+        if partner_id:
+            partner_session = request.env['mcp.chatbot.session'].sudo().search([
+                ('partner_id', '=', partner_id),
+                ('state',      '=', 'open'),
+            ], order='create_date desc', limit=1)
+
+            if partner_session:
+                messages = []
+                for msg in partner_session.message_ids.sorted('create_date'):
+                    messages.append({
+                        'role':    msg.role,
+                        'content': msg.content,
+                    })
+                # Return the real token so the browser adopts it if it differs
+                return {
+                    'status':        'open',
+                    'messages':      messages,
+                    'session_token': partner_session.session_token,
+                }
+
+        # ── Anonymous users (or no open partner session found): fall back to
+        # token-based lookup ─────────────────────────────────────────────────
         session = request.env['mcp.chatbot.session'].sudo().search([
             ('session_token', '=', session_token),
         ], limit=1)
@@ -220,11 +260,7 @@ class MCPChatbotController(http.Controller):
         if session.state == 'closed':
             return {'status': 'closed', 'messages': []}
 
-        # ── Guard: session belongs to a different user ───────────────────
-        partner_id = None
-        if not request.env.user._is_public():
-            partner_id = request.env.user.partner_id.id
-
+        # ── Guard: session belongs to a different user ───────────────────────
         existing_partner = session.partner_id.id or None
         if existing_partner != partner_id:
             # Return mismatch so the frontend resets the token
@@ -237,4 +273,4 @@ class MCPChatbotController(http.Controller):
                 'content': msg.content,
             })
 
-        return {'status': 'open', 'messages': messages}
+        return {'status': 'open', 'messages': messages, 'session_token': session_token}

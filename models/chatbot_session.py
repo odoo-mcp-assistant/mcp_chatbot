@@ -148,9 +148,19 @@ class ChatbotSession(models.Model):
             session = self.create(vals)
 
         return session
+    
+    @api.model
+    def get_latest_session_for_partner(self, partner_id: int):
+        """Find the most recent open session for a logged-in partner."""
+        return self.search([
+            ('partner_id', '=', partner_id),
+            ('state', '=', 'open'),
+        ], order='create_date desc', limit=1)
+
 
     def action_close(self):
         """Close the session."""
+        self.ensure_one()
         print("="*60)
         print(f"Session ({self.name}) is closed")
         print("="*60)

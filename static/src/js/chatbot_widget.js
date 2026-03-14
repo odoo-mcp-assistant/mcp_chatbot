@@ -145,6 +145,12 @@
         function loadHistoryFromBackend(token, container, callback) {
             jsonRpc('/mcp_chatbot/history', { session_token: token })
                 .then(function (result) {
+                     // If backend sends back a corrected token, adopt it
+                    if (result && result.session_token && result.session_token !== sessionToken) {
+                        sessionToken = result.session_token;
+                        sessionStorage.setItem(TOKEN_KEY, sessionToken);
+                    }
+
                     // result.status = 'closed' | 'not_found' → reset token
                     if (!result || result.status === 'closed' || result.status === 'not_found' || result.status === 'mismatch') {
                         clearSessionToken();
