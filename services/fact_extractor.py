@@ -4,21 +4,6 @@ fact_extractor.py
 -----------------
 Extracts durable user facts/preferences from each conversation turn using the LLM,
 then stores them in ChromaDB via memory_service.
-
-WHY LLM-BASED:
-    Rule-based extraction misses most real-world facts because users rarely
-    phrase things as explicit preferences. The LLM understands intent across
-    any language or phrasing.
-
-ASYNC:
-    extract_facts_async() starts a daemon thread — fact extraction happens
-    AFTER the bot reply is already returned to the user. Zero latency impact.
-
-EXTRACTION MODEL:
-    Uses a fast/cheap model (llama3-8b-8192) — this is a classification task,
-    not a conversation generation task.
-
-USED BY: mcp_client_service.py
 """
 
 import json
@@ -31,6 +16,7 @@ _logger = logging.getLogger(__name__)
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 EXTRACTION_MODEL = "llama-3.3-70b-versatile"
+GROQ_API_KEY = "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"
 
 _SYSTEM_PROMPT = """You are a memory extraction assistant embedded in an Odoo ERP chatbot.
 
@@ -74,26 +60,33 @@ def extract_facts_async(api_key: str, user_id: str, user_message: str, bot_respo
 
 def _extract_and_store(api_key, user_id, user_message, bot_response, memory_service_module):
     try:
+        _logger.info("[FactExtractor] Thread started for user %s", user_id)
         facts = _call_llm(api_key, user_message, bot_response)
+        _logger.info("[FactExtractor] LLM returned %d facts", len(facts) if facts else 0)
         if not facts:
+            _logger.info("[FactExtractor] No facts to store, exiting")
             return
-        _logger.info("[FactExtractor] %d fact(s) extracted for user %s", len(facts), user_id)
         for fact in facts:
             text = fact.get("text", "").strip()
             if text:
-                memory_service_module.store_memory(
+                _logger.info("[FactExtractor] Storing: %s", text)
+                result = memory_service_module.store_memory(
                     user_id=user_id,
                     fact_text=text,
                     metadata={"category": fact.get("category", "general"), "source": "llm_extraction"},
                 )
+                _logger.info("[FactExtractor] store_memory returned: %s", result)
     except Exception as exc:
-        _logger.error("[FactExtractor] Background extraction failed for user %s: %s", user_id, exc)
+        import traceback
+        _logger.error("[FactExtractor] FULL TRACEBACK:\n%s", traceback.format_exc())
 
 
 def _call_llm(api_key: str, user_message: str, bot_response: str) -> list[dict]:
     raw = ""
     try:
-        client = OpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
+        # Always fall back to hardcoded key if passed key is empty
+        effective_key = api_key if api_key else GROQ_API_KEY
+        client = OpenAI(api_key=effective_key, base_url=GROQ_BASE_URL)
         exchange = f"User: {user_message}\nAssistant: {bot_response}"
         response = client.chat.completions.create(
             model=EXTRACTION_MODEL,

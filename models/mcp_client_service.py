@@ -150,7 +150,7 @@ async def _async_process_message(
     conversation.extend(history)
     conversation.append({"role": "user", "content": user_message})
 
-    API_KEY = os.getenv("OPENAI_API_KEY", "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")
+    API_KEY = os.getenv("OPENAI_API_KEY", "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")
     client = OpenAI(api_key=API_KEY, base_url="https://api.groq.com/openai/v1")
     model_name = model or "llama-3.3-70b-versatile"
 
@@ -288,7 +288,7 @@ class MCPClientService(models.AbstractModel):
         if not history:
             return ""
 
-        API_KEY = os.getenv("OPENAI_API_KEY", "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")
+        API_KEY = os.getenv("OPENAI_API_KEY", "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")
         client = OpenAI(api_key=API_KEY, base_url="https://api.groq.com/openai/v1")
         model_name = os.getenv("OPENAI_MODEL", "llama-3.3-70b-versatile")
 

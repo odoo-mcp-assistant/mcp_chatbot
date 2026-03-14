@@ -1,10 +1,58 @@
 # mcp_chatbot/controllers/chatbot_controller.py
 import logging
+import importlib
+import os
 
 from odoo import http
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
+
+GROQ_API_KEY = "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"
+
+
+def _get_fact_extractor():
+    """Lazily load fact_extractor from the services folder."""
+    import sys, importlib.util
+    services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
+    if 'mcp_chatbot_fact_extractor' not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            'mcp_chatbot_fact_extractor',
+            os.path.join(services_dir, 'fact_extractor.py')
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['mcp_chatbot_fact_extractor'] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules['mcp_chatbot_fact_extractor']
+
+
+def _get_memory_service():
+    """Lazily load memory_service from the services folder."""
+    import sys, importlib.util
+    services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
+
+    if services_dir not in sys.path:
+        sys.path.insert(0, services_dir)
+
+    if 'embedding_service' not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            'embedding_service',
+            os.path.join(services_dir, 'embedding_service.py')
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['embedding_service'] = mod
+        spec.loader.exec_module(mod)
+
+    if 'mcp_chatbot_memory_service' not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            'mcp_chatbot_memory_service',
+            os.path.join(services_dir, 'memory_service.py')
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['mcp_chatbot_memory_service'] = mod
+        spec.loader.exec_module(mod)
+
+    return sys.modules['mcp_chatbot_memory_service']
 
 
 class MCPChatbotController(http.Controller):
@@ -22,12 +70,6 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def receive_message(self, session_token: str, message: str, welcome: str = None, **kwargs):
-        """
-        Receive a user message. Creates the session on the first real
-        user message (lazy creation). If 'welcome' is provided it means
-        this is the first message — persist the welcome text first so
-        the LLM has full context.
-        """
         if not session_token or not message or not message.strip():
             return {'error': 'session_token and message are required'}
 
@@ -38,7 +80,7 @@ class MCPChatbotController(http.Controller):
         if not request.env.user._is_public():
             partner_id = request.env.user.partner_id.id
 
-        # ── Guard: if token belongs to a different user, reject it ───────
+        # ── Guard: token belongs to a different user ─────────────────────
         existing = request.env['mcp.chatbot.session'].sudo().search([
             ('session_token', '=', session_token),
             ('state', '=', 'open'),
@@ -132,6 +174,23 @@ class MCPChatbotController(http.Controller):
         # ── RAG: user_id for long-term memory ────────────────────────────
         user_id = str(partner_id) if partner_id else f"anon_{session_token[:16]}"
 
+        # ── RAG: retrieve and inject long-term memories ──────────────────
+        if partner_id:
+            try:
+                memory_service = _get_memory_service()
+                memories = memory_service.retrieve_memories(user_id, user_message, n_results=5)
+                if memories:
+                    memory_context = "LONG-TERM MEMORY — facts known about this user:\n"
+                    memory_context += "\n".join(f"- {m}" for m in memories)
+                    conversation_history = [
+                        {'role': 'system', 'content': memory_context}
+                    ] + conversation_history
+                    _logger.info(
+                        'mcp_chatbot: injected %d memories for user %s', len(memories), user_id
+                    )
+            except Exception as exc:
+                _logger.error('mcp_chatbot: memory retrieval failed: %s', exc)
+
         # ── Call MCP pipeline ────────────────────────────────────────────
         try:
             ai_reply = mcp_service.process_message(user_message, conversation_history, user_id=user_id)
@@ -145,6 +204,22 @@ class MCPChatbotController(http.Controller):
             'role':       'assistant',
             'content':    ai_reply,
         })
+
+        # ── Extract and store facts in background thread ─────────────────
+        if partner_id:
+            try:
+                fact_extractor = _get_fact_extractor()
+                memory_service = _get_memory_service()
+                fact_extractor.extract_facts_async(
+                    api_key=GROQ_API_KEY,
+                    user_id=user_id,
+                    user_message=user_message,
+                    bot_response=ai_reply,
+                    memory_service_module=memory_service,
+                )
+                _logger.info('mcp_chatbot: fact extraction triggered for user %s', user_id)
+            except Exception as exc:
+                _logger.error('mcp_chatbot: fact extraction trigger failed: %s', exc)
 
         return {'reply': ai_reply, 'session_token': session_token}
 
@@ -161,10 +236,6 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def welcome(self, session_token: str, **kwargs):
-        """
-        Generate a personalised welcome message WITHOUT creating a session.
-        Session is created lazily on the first real user message.
-        """
         partner_name = 'there'
         if not request.env.user._is_public():
             partner_name = request.env.user.partner_id.name
@@ -199,16 +270,6 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def history(self, session_token: str, **kwargs):
-        """
-        Return the full message history for a session token.
-        Called by the frontend every time the widget is opened.
-
-        Returns:
-            { "status": "open",      "messages": [...] }
-            { "status": "closed",    "messages": [] }
-            { "status": "not_found", "messages": [] }
-            { "status": "mismatch",  "messages": [] }
-        """
         if not session_token:
             return {'status': 'not_found', 'messages': []}
 
@@ -222,7 +283,6 @@ class MCPChatbotController(http.Controller):
         if session.state == 'closed':
             return {'status': 'closed', 'messages': []}
 
-        # Guard: session belongs to a different user
         partner_id = None
         if not request.env.user._is_public():
             partner_id = request.env.user.partner_id.id
@@ -250,7 +310,6 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def close_session(self, session_token: str = None, **kwargs):
-        """Close a session when the visitor closes the widget."""
         if session_token:
             session = request.env['mcp.chatbot.session'].sudo().search([
                 ('session_token', '=', session_token),
