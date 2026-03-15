@@ -188,7 +188,8 @@ async def _async_process_message(user_message: str, history: list, model: str, a
         for tool_call in message.tool_calls:
             tool_name = tool_call.function.name
             # Arguments are a JSON string; parse them
-            args = json.loads(tool_call.function.arguments)
+            raw_args = tool_call.function.arguments
+            args = json.loads(raw_args) if raw_args else {}
 
             # INTERCEPTION LAYER - Enforce identity
             # Override any partner_id parameter with the real one
