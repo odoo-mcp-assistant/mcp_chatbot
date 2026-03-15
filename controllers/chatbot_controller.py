@@ -154,7 +154,7 @@ class MCPChatbotController(http.Controller):
         welcome_prompt = (
             f"Generate a short, friendly, and professional welcome message "
             f"for a user named {partner_name}. "
-            f"Introduce yourself as an AI assistant integrated with Odoo ERP. "
+            f"Introduce yourself as an AI assistant for an e commerce platform that sells home appliances and electronics in Tunisia. "
             f"Ask how you can help them today. Keep it to 2 sentences maximum."
         )
 
