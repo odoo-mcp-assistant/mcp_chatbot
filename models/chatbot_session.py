@@ -148,23 +148,14 @@ class ChatbotSession(models.Model):
             session = self.create(vals)
 
         return session
-    
-    @api.model
-    def get_latest_session_for_partner(self, partner_id: int):
-        """Find the most recent open session for a logged-in partner."""
-        return self.search([
-            ('partner_id', '=', partner_id),
-            ('state', '=', 'open'),
-        ], order='create_date desc', limit=1)
-
 
     def action_close(self):
         """Close the session."""
-        self.ensure_one()
-        print("="*60)
-        print(f"Session ({self.name}) is closed")
-        print("="*60)
-        self.write({'state': 'closed'})
+        for rec in self:
+            print("="*60)
+            print(f"Session ({self.name}) is closed")
+            print("="*60)
+            self.write({'state': 'closed'})
 
     def touch_activity(self):
         """Update last_activity to now. Called on every incoming message to reset the idle clock."""
@@ -196,7 +187,6 @@ class ChatbotSession(models.Model):
         Closes any open session whose last_activity is older than
         IDLE_TIMEOUT_MINUTES (default 30).
         """
-        self.ensure_one()
         IDLE_TIMEOUT_MINUTES = 30
         cutoff = fields.Datetime.now() - timedelta(minutes=IDLE_TIMEOUT_MINUTES)
         idle_sessions = self.search([

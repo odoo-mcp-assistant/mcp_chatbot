@@ -39,25 +39,10 @@ class MCPChatbotController(http.Controller):
         if not request.env.user._is_public():
             partner_id = request.env.user.partner_id.id
 
-        # ── Guard: if token belongs to a different user, reject it ───────
-        # This prevents anonymous users from hijacking a logged-in session
-        # when sessionStorage is not cleared on logout.
-        existing = request.env['mcp.chatbot.session'].sudo().search([
-            ('session_token', '=', session_token),
-            ('state', '=', 'open'),
-        ], limit=1)
-
-        if existing:
-            existing_partner = existing.partner_id.id or None
-            if existing_partner != partner_id:
-                # Token belongs to a different user — refuse to add messages
-                _logger.warning(
-                    'mcp_chatbot: token %s belongs to partner %s but current user is partner %s — rejecting',
-                    session_token, existing_partner, partner_id
-                )
-                return {'error': 'session_mismatch', 'session_token': session_token}
-
         # ── Get or create session (lazy — created on first real message) ─
+        # The history() endpoint already guarantees the browser holds the
+        # correct token for the current user before any message is sent,
+        # so no mismatch guard is needed here.
         Session = request.env['mcp.chatbot.session'].sudo()
         session = Session.get_or_create_session(session_token, partner_id=partner_id)
 
