@@ -153,9 +153,9 @@ class ChatbotSession(models.Model):
         """Close the session."""
         for rec in self:
             print("="*60)
-            print(f"Session ({self.name}) is closed")
+            print(f"Session ({rec.name}) is closed")
             print("="*60)
-            self.write({'state': 'closed'})
+            rec.write({'state': 'closed'})
 
     def touch_activity(self):
         """Update last_activity to now. Called on every incoming message to reset the idle clock."""
