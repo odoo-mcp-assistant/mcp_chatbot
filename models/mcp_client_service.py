@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import threading
+from dotenv import load_dotenv
 
 from odoo import models, api
 from openai import OpenAI
@@ -10,6 +11,21 @@ import json
 from .base_client import BaseHTTPMCPClient
 
 _logger = logging.getLogger(__name__)
+
+def _get_groq_api_key() -> str:
+    return os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
+
+
+def _get_openai_model() -> str:
+    return os.getenv("OPENAI_MODEL", "")
+
+
+def _get_groq_base_url() -> str:
+    return os.getenv("GROQ_BASE_URL", "")
+
+
+module_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+load_dotenv(os.path.join(module_root, '.env'))
 
 # ---------------------------------------------------------------------------
 # Module-level singletons
@@ -150,9 +166,9 @@ async def _async_process_message(
     conversation.extend(history)
     conversation.append({"role": "user", "content": user_message})
 
-    API_KEY = os.getenv("OPENAI_API_KEY", "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")
-    client = OpenAI(api_key=API_KEY, base_url="https://api.groq.com/openai/v1")
-    model_name = model or "openai/gpt-oss-120b"
+    API_KEY = _get_groq_api_key()
+    client = OpenAI(api_key=API_KEY, base_url=_get_groq_base_url())
+    model_name = model or _get_openai_model()
 
     response = client.chat.completions.create(
         model=model_name,
@@ -264,7 +280,7 @@ class MCPClientService(models.AbstractModel):
         """
         self.ensure_initialized()
 
-        model = os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b")
+        model = _get_openai_model()
         effective_prompt = system_prompt if system_prompt else SYSTEM_PROMPT
 
         try:
@@ -288,9 +304,9 @@ class MCPClientService(models.AbstractModel):
         if not history:
             return ""
 
-        API_KEY = os.getenv("OPENAI_API_KEY", "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")
-        client = OpenAI(api_key=API_KEY, base_url="https://api.groq.com/openai/v1")
-        model_name = os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b")
+        API_KEY = _get_groq_api_key()
+        client = OpenAI(api_key=API_KEY, base_url=_get_groq_base_url())
+        model_name = _get_openai_model()
 
         messages = [
             {

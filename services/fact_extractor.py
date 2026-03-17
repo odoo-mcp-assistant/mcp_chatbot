@@ -9,14 +9,18 @@ then stores them in ChromaDB via memory_service.
 import json
 import logging
 import threading
+import os
+from dotenv import load_dotenv
 
 from openai import OpenAI
 
 _logger = logging.getLogger(__name__)
 
-GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-EXTRACTION_MODEL = "openai/gpt-oss-120b"
-GROQ_API_KEY = "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"
+module_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+load_dotenv(os.path.join(module_root, '.env'))
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "")
+EXTRACTION_MODEL = os.getenv("FACT_EXTRACTION_MODEL", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 _SYSTEM_PROMPT = """You are a memory extraction assistant embedded in an Odoo ERP chatbot.
 
@@ -84,7 +88,7 @@ def _extract_and_store(api_key, user_id, user_message, bot_response, memory_serv
 def _call_llm(api_key: str, user_message: str, bot_response: str) -> list[dict]:
     raw = ""
     try:
-        # Always fall back to hardcoded key if passed key is empty
+        # Fall back to env key if passed key is empty
         effective_key = api_key if api_key else GROQ_API_KEY
         client = OpenAI(api_key=effective_key, base_url=GROQ_BASE_URL)
         exchange = f"User: {user_message}\nAssistant: {bot_response}"

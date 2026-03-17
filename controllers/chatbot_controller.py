@@ -2,13 +2,16 @@
 import logging
 import importlib
 import os
+from dotenv import load_dotenv
 
 from odoo import http
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
 
-GROQ_API_KEY = "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"
+module_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+load_dotenv(os.path.join(module_root, '.env'))
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
 
 
 def _get_fact_extractor():

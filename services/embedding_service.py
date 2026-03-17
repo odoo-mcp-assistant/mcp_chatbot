@@ -2,7 +2,7 @@
 """
 embedding_service.py
 --------------------
-Converts text to 384-dim vectors using fastembed (BAAI/bge-small-en-v1.5).
+Converts text to vectors using fastembed.
 
 WHY FASTEMBED INSTEAD OF SENTENCE-TRANSFORMERS:
     sentence-transformers depends on transformers → torch (PyTorch).
@@ -15,8 +15,7 @@ INSTALL:
     pip install fastembed --break-system-packages
 
 MODEL:
-    BAAI/bge-small-en-v1.5 — 384 dimensions, multilingual-friendly,
-    well-suited for short conversational facts and preferences.
+    Uses BAAI/bge-small-en-v1.5.
 
 SINGLETON:
     Model is loaded once per Odoo worker process and cached in _model.
