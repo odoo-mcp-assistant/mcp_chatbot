@@ -6,7 +6,7 @@ Long-term memory: stores and retrieves user facts/preferences in ChromaDB.
 
 SETUP:
     ChromaDB must run as a SEPARATE HTTP server:
-        chroma run --host 0.0.0.0 --port 8001 --path /opt/chroma_data
+        chroma run --host 0.0.0.0 --port 8015 --path /opt/chroma_data
 
     One ChromaDB collection per user: "user_memory_{partner_id}"
 
@@ -23,7 +23,7 @@ USED BY: mcp_client_service.py, fact_extractor.py
 
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import chromadb
@@ -103,7 +103,7 @@ def store_memory(user_id: str, fact_text: str, metadata: Optional[dict] = None) 
                         ids=[res["ids"][0][0]],
                         documents=[fact_text],
                         embeddings=[emb],
-                        metadatas=[{**(metadata or {}), "user_id": user_id, "updated_at": datetime.utcnow().isoformat()}],
+                        metadatas=[{**(metadata or {}), "user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat()}],
                     )
                     return True
 
@@ -111,10 +111,10 @@ def store_memory(user_id: str, fact_text: str, metadata: Optional[dict] = None) 
             _prune_oldest(col, keep=MAX_MEMORIES_PER_USER - 1)
 
         col.add(
-            ids=[_doc_id(user_id, fact_text)],
-            documents=[fact_text],
+            ids=[_doc_id(user_id, fact_text)],# Genere un id par le hashage mix de user id et le text de fact car chromadb necessite un id pour chaque document 
+            documents=[fact_text],# Le texte brut du fait (stocké en clair dans ChromaDB).
             embeddings=[emb],
-            metadatas=[{**(metadata or {}), "user_id": user_id, "created_at": datetime.utcnow().isoformat()}],
+            metadatas=[{**(metadata or {}), "user_id": user_id, "created_at": datetime.now(timezone.utc).isoformat()}],
         )
         _logger.info("[MemoryService] Stored new memory for user %s: '%s'", user_id, fact_text[:80])
         return True
@@ -145,7 +145,7 @@ def retrieve_memories(user_id: str, query_text: str, n_results: int = 5) -> list
         emb = embedding_service.embed_text(query_text)
         res = col.query(
             query_embeddings=[emb],
-            n_results=min(n_results, count),
+            n_results=min(n_results, count),# Sécurité : on ne peut pas demander plus de résultats qu'il n'y en a.
             include=["documents", "distances"],
         )
 
@@ -163,6 +163,7 @@ def retrieve_memories(user_id: str, query_text: str, n_results: int = 5) -> list
 
 
 def get_memory_count(user_id: str) -> int:
+    """Retourne le nombre de faits stockés pour un utilisateur. Utilitaire de debug."""
     try:
         return _collection(_client(), user_id).count()
     except Exception:
