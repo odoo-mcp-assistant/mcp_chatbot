@@ -22,11 +22,17 @@ GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "")
 EXTRACTION_MODEL = os.getenv("FACT_EXTRACTION_MODEL", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-_SYSTEM_PROMPT = """You are a memory extraction assistant embedded in an Odoo ERP chatbot.
+_SYSTEM_PROMPT = """You are a memory extraction engine embedded in an Odoo ERP chatbot.
 
-Analyze ONE conversation exchange and extract facts worth remembering long-term about the user.
+Your sole task is to extract durable facts about the USER (the human) from a conversation exchange.
 
-EXTRACT:
+STRICT SOURCE RULE:
+- Extract facts ONLY from the USER message
+- The ASSISTANT message is provided as context only — NEVER extract facts from it
+- Even if the assistant describes, summarizes, or reflects the user (e.g. "You seem to prefer...", "Based on what you told me, you work at..."), ignore it entirely
+- Do not infer facts from the assistant's tone, suggestions, or wording
+
+EXTRACT (from user message only):
 - Language/communication preferences (e.g., "User prefers responses in French")
 - User role, department, or company (e.g., "User is the warehouse manager at branch Tunis")
 - Odoo-specific context (e.g., "User always works with company My Company", "User uses the Purchase module")
@@ -39,6 +45,7 @@ DO NOT EXTRACT:
 - Transient requests like "show me PO list"
 - Odoo ERP data (prices, quantities, dates)
 - Anything that becomes outdated quickly
+- Anything sourced from the assistant's response
 
 Return ONLY valid compact JSON, no markdown fences, no explanation:
 {"facts": [{"text": "User prefers responses in French", "category": "language"}]}
@@ -91,12 +98,15 @@ def _call_llm(api_key: str, user_message: str, bot_response: str) -> list[dict]:
         # Fall back to env key if passed key is empty
         effective_key = api_key if api_key else GROQ_API_KEY
         client = OpenAI(api_key=effective_key, base_url=GROQ_BASE_URL)
-        exchange = f"User: {user_message}\nAssistant: {bot_response}"
+        exchange = (
+            f"USER MESSAGE (extract facts from this):\n{user_message}\n\n"
+            f"ASSISTANT RESPONSE (context only — do not extract from this):\n{bot_response}"
+        )
         response = client.chat.completions.create(
             model=EXTRACTION_MODEL,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": f"Extract facts from this exchange:\n\n{exchange}"},
+                {"role": "user", "content": f"Extract facts about the user from this exchange:\n\n{exchange}"},
             ],
             temperature=0.0,
             max_tokens=512,
