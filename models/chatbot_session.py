@@ -1,8 +1,5 @@
 from odoo import models, fields, api
 from datetime import timedelta
-import logging
-
-_logger = logging.getLogger(__name__)
 
 
 class ChatbotSession(models.Model):
@@ -153,15 +150,12 @@ class ChatbotSession(models.Model):
         return session
 
     def action_close(self):
-        """
-        Close one or more sessions.
-        Works on both singletons and multi-record sets (e.g. called from cron).
-        """
-        # FIX: iterate the recordset so self.name is never accessed on multiple records
-        for session in self:
-            _logger.info("Session (%s) is closed", session.name)
-        # write() operates on the full recordset in a single query — correct and efficient
-        self.write({'state': 'closed'})
+        """Close the session."""
+        for rec in self:
+            print("="*60)
+            print(f"Session ({rec.name}) is closed")
+            print("="*60)
+            rec.write({'state': 'closed'})
 
     def touch_activity(self):
         """Update last_activity to now. Called on every incoming message to reset the idle clock."""
@@ -200,6 +194,4 @@ class ChatbotSession(models.Model):
             ('last_activity', '<', cutoff),
         ])
         if idle_sessions:
-            # FIX: action_close now handles recordsets correctly — no need to loop here
             idle_sessions.action_close()
-            _logger.info("Cron: closed %d idle session(s)", len(idle_sessions))
