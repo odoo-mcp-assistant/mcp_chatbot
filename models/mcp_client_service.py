@@ -171,7 +171,7 @@ async def _async_process_message(user_message: str, history: list, model: str, a
         base_url="https://api.groq.com/openai/v1"
     )
     # Use the provided model or fallback to a default
-    model_name = model or "llama-3.3-70b-versatile"
+    model_name = model or "openai/gpt-oss-120b"
 
     _logger.info("MCP: tool_schemas count = %d", len(_tool_schemas))
 
@@ -290,7 +290,7 @@ class MCPClientService(models.AbstractModel):
         """
         self.ensure_initialized()
 
-        model = os.getenv("OPENAI_MODEL", "llama-3.3-70b-versatile")
+        model = os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b")
 
         try:
             reply = _run_async(
@@ -325,7 +325,7 @@ class MCPClientService(models.AbstractModel):
             base_url="https://api.groq.com/openai/v1"
         )
         # Use the provided model or fallback to a default
-        model_name = os.getenv("OPENAI_MODEL", "llama-3.3-70b-versatile")
+        model_name = os.getenv("OPENAI_MODEL", "openai/gpt-oss-120b")
 
         # Build a single prompt asking the LLM to summarize the conversation
         # No tools needed — this is a pure summarization task
