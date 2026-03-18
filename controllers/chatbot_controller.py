@@ -13,8 +13,12 @@ load_dotenv(os.path.join(module_root, '.env'))
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
 
 
+# ---------------------------------------------------------------------------
+# Service loaders — load services/ files by absolute path so they work
+# inside Odoo without package context issues.
+# ---------------------------------------------------------------------------
+
 def _get_fact_extractor():
-    """Lazily load fact_extractor from the services folder."""
     import sys, importlib.util
     services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
     if 'mcp_chatbot_fact_extractor' not in sys.modules:
@@ -29,10 +33,11 @@ def _get_fact_extractor():
 
 
 def _get_memory_service():
-    """Lazily load memory_service from the services folder."""
     import sys, importlib.util
     services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
 
+    # Add services dir to sys.path so 'import embedding_service' inside
+    # memory_service.py resolves correctly
     if services_dir not in sys.path:
         sys.path.insert(0, services_dir)
 
@@ -90,9 +95,6 @@ class MCPChatbotController(http.Controller):
             partner_id = request.env.user.partner_id.id
 
         # ── Get or create session (lazy — created on first real message) ─
-        # The history() endpoint already guarantees the browser holds the
-        # correct token for the current user before any message is sent,
-        # so no mismatch guard is needed here.
         Session = request.env['mcp.chatbot.session'].sudo()
         session = Session.get_or_create_session(session_token, partner_id=partner_id)
 
@@ -147,6 +149,7 @@ class MCPChatbotController(http.Controller):
             }
         ] + unsummarized_messages
 
+        # ── Identity context injection ───────────────────────────────────
         if partner_id:
             identity_msg = (
                 f"Current authenticated user: "
@@ -165,10 +168,11 @@ class MCPChatbotController(http.Controller):
         ] + conversation_history
 
         # ── RAG: user_id for long-term memory ────────────────────────────
-        user_id = str(partner_id) if partner_id else f"anon_{session_token[:16]}"
+        user_id = str(partner_id) if partner_id else None
 
         # ── RAG: retrieve and inject long-term memories ──────────────────
-        if partner_id:
+        # Only for authenticated users — anonymous users have no stored facts
+        if user_id:
             try:
                 memory_service = _get_memory_service()
                 memories = memory_service.retrieve_memories(user_id, user_message, n_results=5)
@@ -198,8 +202,9 @@ class MCPChatbotController(http.Controller):
             'content':    ai_reply,
         })
 
-        # ── Extract and store facts in background thread ─────────────────
-        if partner_id:
+        # ── RAG: extract and store facts in background thread ────────────
+        # Only for authenticated users — anonymous sessions are not persisted
+        if user_id:
             try:
                 fact_extractor = _get_fact_extractor()
                 memory_service = _get_memory_service()
@@ -252,7 +257,6 @@ class MCPChatbotController(http.Controller):
             _logger.error('mcp_chatbot: welcome generation error: %s', exc)
             welcome_msg = f'Hello {partner_name}! How can I help you today?'
 
-        # No session created here — browser only
         return {'welcome': welcome_msg}
 
     # ------------------------------------------------------------------ #
@@ -294,11 +298,6 @@ class MCPChatbotController(http.Controller):
             partner_id = request.env.user.partner_id.id
 
         # ── Authenticated users: recover session by partner_id first ────────
-        # This is the key fix: the DB is the source of truth for logged-in
-        # users, not the browser token. If Mitchell logs out, has an anonymous
-        # chat, then logs back in — his token in sessionStorage may be stale or
-        # gone, but his session still exists in the DB tied to his partner_id.
-        # We find it here and hand the correct token back to the browser.
         if partner_id:
             partner_session = request.env['mcp.chatbot.session'].sudo().search([
                 ('partner_id', '=', partner_id),
@@ -312,15 +311,13 @@ class MCPChatbotController(http.Controller):
                         'role':    msg.role,
                         'content': msg.content,
                     })
-                # Return the real token so the browser adopts it if it differs
                 return {
                     'status':        'open',
                     'messages':      messages,
                     'session_token': partner_session.session_token,
                 }
 
-        # ── Anonymous users (or no open partner session found): fall back to
-        # token-based lookup ─────────────────────────────────────────────────
+        # ── Anonymous fallback: token-based lookup ───────────────────────────
         session = request.env['mcp.chatbot.session'].sudo().search([
             ('session_token', '=', session_token),
         ], limit=1)
@@ -331,10 +328,8 @@ class MCPChatbotController(http.Controller):
         if session.state == 'closed':
             return {'status': 'closed', 'messages': []}
 
-        # ── Guard: session belongs to a different user ───────────────────────
         existing_partner = session.partner_id.id or None
         if existing_partner != partner_id:
-            # Return mismatch so the frontend resets the token
             return {'status': 'mismatch', 'messages': []}
 
         messages = []
@@ -359,6 +354,7 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def close_session(self, session_token: str = None, **kwargs):
+        """Close a session when the visitor closes the widget."""
         if session_token:
             session = request.env['mcp.chatbot.session'].sudo().search([
                 ('session_token', '=', session_token),
