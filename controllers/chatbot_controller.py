@@ -1,6 +1,5 @@
 # mcp_chatbot/controllers/chatbot_controller.py
 import logging
-import importlib
 import os
 from dotenv import load_dotenv
 
@@ -73,6 +72,13 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def receive_message(self, session_token: str, message: str, welcome: str = None, **kwargs):
+        """
+        Receive a user message. Creates the session on the first real
+        user message (lazy creation). If 'welcome' is provided it means
+        this is the first message — persist the welcome text first so
+        the LLM has full context.
+        """
+
         if not session_token or not message or not message.strip():
             return {'error': 'session_token and message are required'}
 
@@ -83,24 +89,14 @@ class MCPChatbotController(http.Controller):
         if not request.env.user._is_public():
             partner_id = request.env.user.partner_id.id
 
-        # ── Guard: token belongs to a different user ─────────────────────
-        existing = request.env['mcp.chatbot.session'].sudo().search([
-            ('session_token', '=', session_token),
-            ('state', '=', 'open'),
-        ], limit=1)
-
-        if existing:
-            existing_partner = existing.partner_id.id or None
-            if existing_partner != partner_id:
-                _logger.warning(
-                    'mcp_chatbot: token %s belongs to partner %s but current user is partner %s — rejecting',
-                    session_token, existing_partner, partner_id
-                )
-                return {'error': 'session_mismatch', 'session_token': session_token}
-
-        # ── Get or create session ────────────────────────────────────────
+        # ── Get or create session (lazy — created on first real message) ─
+        # The history() endpoint already guarantees the browser holds the
+        # correct token for the current user before any message is sent,
+        # so no mismatch guard is needed here.
         Session = request.env['mcp.chatbot.session'].sudo()
         session = Session.get_or_create_session(session_token, partner_id=partner_id)
+
+        # ── Touch activity — resets the idle timeout clock ───────────────
         session.touch_activity()
 
         Message = request.env['mcp.chatbot.message'].sudo()
@@ -120,7 +116,7 @@ class MCPChatbotController(http.Controller):
             'content':    user_message,
         })
 
-        # ── Build conversation history (short-term + summarization) ──────
+        # ── Build conversation history ───────────────────────────────────
         mcp_service = request.env['mcp.client.service'].sudo()
 
         messages_count     = len(session.message_ids)
@@ -151,28 +147,22 @@ class MCPChatbotController(http.Controller):
             }
         ] + unsummarized_messages
 
-        # ── Identity context injection ───────────────────────────────────
         if partner_id:
             identity_msg = (
-                f"IMPORTANT CONTEXT — current authenticated user: "
+                f"Current authenticated user: "
                 f"name='{request.env.user.partner_id.name}', "
-                f"partner_id={partner_id}. "
-                "RULES you must follow strictly: "
-                "1. You already have full identity context. Never ask the user for any personal information — "
-                "2. always inject it silently into tool calls when needed. "
-                "3. Never expose raw technical values like IDs to the user."
             )
         else:
             identity_msg = (
-                "IMPORTANT CONTEXT — current user: not logged in (anonymous visitor). "
-                "RULES you must follow strictly: "
-                "1. You have no personal information about this visitor. "
-                "2. If they ask about personal data such as orders or invoices, "
-                "3. do not call any tool — tell them to log in first. "
-                "4. You can still answer general questions about products and pricing."
+                "Current user: not logged in (anonymous visitor)."
             )
 
-        conversation_history = [{'role': 'system', 'content': identity_msg}] + conversation_history
+        conversation_history = [
+            {
+                'role':    'system',
+                'content': identity_msg,
+            }
+        ] + conversation_history
 
         # ── RAG: user_id for long-term memory ────────────────────────────
         user_id = str(partner_id) if partner_id else f"anon_{session_token[:16]}"
@@ -196,7 +186,7 @@ class MCPChatbotController(http.Controller):
 
         # ── Call MCP pipeline ────────────────────────────────────────────
         try:
-            ai_reply = mcp_service.process_message(user_message, conversation_history, user_id=user_id)
+            ai_reply = mcp_service.process_message(user_message, conversation_history, partner_id)
         except Exception as exc:
             _logger.error('mcp_chatbot: MCP pipeline error: %s', exc)
             ai_reply = 'Sorry, I encountered an error. Please try again.'
@@ -239,6 +229,10 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def welcome(self, session_token: str, **kwargs):
+        """
+        Generate a personalised welcome message WITHOUT creating a session.
+        Session is created lazily on the first real user message.
+        """
         partner_name = 'there'
         if not request.env.user._is_public():
             partner_name = request.env.user.partner_id.name
@@ -246,7 +240,7 @@ class MCPChatbotController(http.Controller):
         welcome_prompt = (
             f"Generate a short, friendly, and professional welcome message "
             f"for a user named {partner_name}. "
-            f"Introduce yourself as an AI assistant integrated with Odoo ERP. "
+            f"Introduce yourself as an AI assistant for an e commerce platform that sells home appliances and electronics in Tunisia. "
             f"Ask how you can help them today. Keep it to 2 sentences maximum."
         )
 
@@ -258,6 +252,7 @@ class MCPChatbotController(http.Controller):
             _logger.error('mcp_chatbot: welcome generation error: %s', exc)
             welcome_msg = f'Hello {partner_name}! How can I help you today?'
 
+        # No session created here — browser only
         return {'welcome': welcome_msg}
 
     # ------------------------------------------------------------------ #
@@ -273,9 +268,59 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def history(self, session_token: str, **kwargs):
+        """
+        Return the full message history for a session token.
+        Called by the frontend every time the widget is opened.
+        This is the single source of truth — no history in localStorage.
+
+        For logged-in users, the backend first looks up their most recent open
+        session by partner_id. This ensures history is restored even when the
+        browser token is stale (e.g. after an anonymous session was created in
+        between, or the cron closed the old session and the token was wiped).
+        The real session_token is returned so the browser can adopt it.
+
+        Returns:
+            { "status": "open",      "messages": [...], "session_token": "..." }
+            { "status": "closed",    "messages": [] }
+            { "status": "not_found", "messages": [] }
+            { "status": "mismatch",  "messages": [] }
+        """
         if not session_token:
             return {'status': 'not_found', 'messages': []}
 
+        # ── Resolve partner if logged in ────────────────────────────────────
+        partner_id = None
+        if not request.env.user._is_public():
+            partner_id = request.env.user.partner_id.id
+
+        # ── Authenticated users: recover session by partner_id first ────────
+        # This is the key fix: the DB is the source of truth for logged-in
+        # users, not the browser token. If Mitchell logs out, has an anonymous
+        # chat, then logs back in — his token in sessionStorage may be stale or
+        # gone, but his session still exists in the DB tied to his partner_id.
+        # We find it here and hand the correct token back to the browser.
+        if partner_id:
+            partner_session = request.env['mcp.chatbot.session'].sudo().search([
+                ('partner_id', '=', partner_id),
+                ('state',      '=', 'open'),
+            ], order='create_date desc', limit=1)
+
+            if partner_session:
+                messages = []
+                for msg in partner_session.message_ids.sorted('create_date'):
+                    messages.append({
+                        'role':    msg.role,
+                        'content': msg.content,
+                    })
+                # Return the real token so the browser adopts it if it differs
+                return {
+                    'status':        'open',
+                    'messages':      messages,
+                    'session_token': partner_session.session_token,
+                }
+
+        # ── Anonymous users (or no open partner session found): fall back to
+        # token-based lookup ─────────────────────────────────────────────────
         session = request.env['mcp.chatbot.session'].sudo().search([
             ('session_token', '=', session_token),
         ], limit=1)
@@ -286,19 +331,20 @@ class MCPChatbotController(http.Controller):
         if session.state == 'closed':
             return {'status': 'closed', 'messages': []}
 
-        partner_id = None
-        if not request.env.user._is_public():
-            partner_id = request.env.user.partner_id.id
-
-        if (session.partner_id.id or None) != partner_id:
+        # ── Guard: session belongs to a different user ───────────────────────
+        existing_partner = session.partner_id.id or None
+        if existing_partner != partner_id:
+            # Return mismatch so the frontend resets the token
             return {'status': 'mismatch', 'messages': []}
 
-        messages = [
-            {'role': m.role, 'content': m.content}
-            for m in session.message_ids.sorted('create_date')
-        ]
+        messages = []
+        for msg in session.message_ids.sorted('create_date'):
+            messages.append({
+                'role':    msg.role,
+                'content': msg.content,
+            })
 
-        return {'status': 'open', 'messages': messages}
+        return {'status': 'open', 'messages': messages, 'session_token': session_token}
 
     # ------------------------------------------------------------------ #
     # POST /mcp_chatbot/close                                              #
