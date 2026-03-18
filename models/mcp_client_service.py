@@ -73,6 +73,8 @@ AUTH_REQUIRED_TOOLS = {
     'create_order', 
     'confirm_order',
     'cancel_order',
+    'get_order_details',
+    'get_my_profile',
     # Add any future tools that need partner_id
 }
 
