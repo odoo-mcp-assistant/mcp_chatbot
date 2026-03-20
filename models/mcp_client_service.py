@@ -67,6 +67,9 @@ AUTH_REQUIRED_TOOLS = {
     'cancel_order',
     'get_order_details',
     'get_my_profile',
+    'get_invoices',
+    'get_invoice_details',
+    'get_unpaid_invoices',
 }
 
 # ---------------------------------------------------------------------------
