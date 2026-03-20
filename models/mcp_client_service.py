@@ -154,20 +154,29 @@ async def _async_process_message(user_message, history, authenticated_partner_id
 
     model_name = os.getenv("OPENAI_MODEL")
 
-    # First LLM call — model may choose to call a tool
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=conversation,
-        tools=_tool_schemas,
-        tool_choice="auto",
-        temperature=0.7,
-    )
+    # Agentic loop — run until the model stops calling tools or we hit the cap.
+    # Cap at 5 rounds to prevent infinite loops if the model misbehaves.
+    MAX_TOOL_ROUNDS = 5
 
-    message = response.choices[0].message
+    for round_number in range(MAX_TOOL_ROUNDS):
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=conversation,
+            tools=_tool_schemas,
+            tool_choice="auto",
+            temperature=0.7,
+        )
 
-    if message.tool_calls:
+        message = response.choices[0].message
+
+        # No tool calls — model is done, return its text reply
+        if not message.tool_calls:
+            return message.content or ""
+
+        # Append the assistant turn with its tool call requests
         conversation.append(message)
 
+        # Execute every tool the model requested in this round
         for tool_call in message.tool_calls:
             tool_name = tool_call.function.name
             args = json.loads(tool_call.function.arguments)
@@ -177,7 +186,10 @@ async def _async_process_message(user_message, history, authenticated_partner_id
                     args = {}
                 args['partner_id'] = authenticated_partner_id
 
-            _logger.info("MCP: calling tool '%s' with args %s", tool_name, args)
+            _logger.info(
+                "MCP: round %d — calling tool '%s' with args %s",
+                round_number + 1, tool_name, args,
+            )
 
             result = (
                 await _mcp_client.session.call_tool(tool_name, arguments=args or {})
@@ -190,19 +202,16 @@ async def _async_process_message(user_message, history, authenticated_partner_id
                 "content":      str(result),
             })
 
-        # Second LLM call — format tool results into natural language.
-        # tool_choice="none" prevents the model from calling another tool,
-        # which causes a 400 error on Groq.
-        final_response = client.chat.completions.create(
-            model=model_name,
-            messages=conversation,
-            tools=_tool_schemas,
-            tool_choice="none",
-            temperature=0.7,
-        )
-        return final_response.choices[0].message.content
-
-    return message.content or ""
+    # Safety fallback — cap reached, ask the model to wrap up with what it has
+    _logger.warning("MCP: tool round cap (%d) reached, forcing final reply", MAX_TOOL_ROUNDS)
+    final_response = client.chat.completions.create(
+        model=model_name,
+        messages=conversation,
+        tools=_tool_schemas,
+        tool_choice="none",
+        temperature=0.7,
+    )
+    return final_response.choices[0].message.content or ""
 
 
 # ---------------------------------------------------------------------------
