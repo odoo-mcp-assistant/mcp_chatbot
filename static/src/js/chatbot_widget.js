@@ -186,10 +186,8 @@
         // ──────────────────────────────────────────────────────────────
 
         function fetchWelcome(container, callback) {
-            var typingEl = showTyping(container);
-            jsonRpc('/mcp_chatbot/welcome', { session_token: sessionToken })
+            jsonRpc('/mcp_chatbot/welcome', {})
                 .then(function (result) {
-                    typingEl.remove();
                     var msg = (result && result.welcome)
                         ? result.welcome
                         : 'Hello! How can I help you today?';
@@ -198,7 +196,6 @@
                     if (callback) { callback(); }
                 })
                 .catch(function () {
-                    typingEl.remove();
                     welcomeText = 'Hello! How can I help you today?';
                     appendMessage(container, 'assistant', welcomeText);
                     if (callback) { callback(); }

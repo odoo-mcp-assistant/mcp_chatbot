@@ -233,29 +233,19 @@ class MCPChatbotController(http.Controller):
         website=True,
         csrf=False,
     )
-    def welcome(self, session_token: str, **kwargs):
-        """
-        Generate a personalised welcome message WITHOUT creating a session.
-        Session is created lazily on the first real user message.
-        """
-        partner_name = 'there'
+    def welcome(self):
         if not request.env.user._is_public():
             partner_name = request.env.user.partner_id.name
-
-        welcome_prompt = (
-            f"Generate a short, friendly, and professional welcome message "
-            f"for a user named {partner_name}. "
-            f"Introduce yourself as an AI assistant for an e commerce platform that sells home appliances and electronics in Tunisia. "
-            f"Ask how you can help them today. Keep it to 2 sentences maximum."
-        )
-
-        mcp_service = request.env['mcp.client.service'].sudo()
-
-        try:
-            welcome_msg = mcp_service.process_message(welcome_prompt, [])
-        except Exception as exc:
-            _logger.error('mcp_chatbot: welcome generation error: %s', exc)
-            welcome_msg = f'Hello {partner_name}! How can I help you today?'
+            welcome_msg = (
+                f"Hello {partner_name}! Welcome back. "
+                f"I'm Bachwel, your AI assistant for home appliances and electronics. "
+                f"How can I help you today?"
+            )
+        else:
+            welcome_msg = (
+                "Hello! I'm Bachwel, your AI assistant for home appliances and electronics in Tunisia. "
+                "How can I help you today?"
+            )
 
         return {'welcome': welcome_msg}
 
