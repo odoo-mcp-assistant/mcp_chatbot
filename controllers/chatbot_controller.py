@@ -1,16 +1,11 @@
 # mcp_chatbot/controllers/chatbot_controller.py
 import logging
 import os
-from dotenv import load_dotenv
 
 from odoo import http
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
-
-module_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-load_dotenv(os.path.join(module_root, '.env'))
-GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +58,9 @@ def _get_memory_service():
 
 
 class MCPChatbotController(http.Controller):
+
+    def _get_param(self, key, default=None):
+        return request.env['ir.config_parameter'].sudo().get_param(key, default)
 
     # ------------------------------------------------------------------ #
     # POST /mcp_chatbot/message                                            #
@@ -118,13 +116,16 @@ class MCPChatbotController(http.Controller):
             'content':    user_message,
         })
 
+        # ── Read summary interval from settings ──────────────────────────
+        summary_interval = int(self._get_param('mcp_chatbot.summary_interval', 10))
+
         # ── Build conversation history ───────────────────────────────────
         mcp_service = request.env['mcp.client.service'].sudo()
 
         messages_count     = len(session.message_ids)
         unsummarized_count = messages_count - session.last_summarized_count
 
-        if unsummarized_count >= 10:
+        if unsummarized_count >= summary_interval:
             messages_to_summarize = session.get_conversation_history()[-unsummarized_count:]
             summary_prefix = [{
                 'role':    'system',
@@ -167,10 +168,9 @@ class MCPChatbotController(http.Controller):
             }
         ] + conversation_history
 
-        # ── RAG: user_id for long-term memory ────────────────────────────
+        # ── RAG: retrieve and inject long-term memories ──────────────────
         user_id = str(partner_id) if partner_id else None
 
-        # ── RAG: retrieve and inject long-term memories ──────────────────
         # Only for authenticated users — anonymous users have no stored facts
         if user_id:
             try:
@@ -206,10 +206,26 @@ class MCPChatbotController(http.Controller):
         # Only for authenticated users — anonymous sessions are not persisted
         if user_id:
             try:
+                # Read API key and fact extraction model from settings
+                param = request.env['ir.config_parameter'].sudo()
+                api_key = param.get_param('mcp_chatbot.api_key', '')
+                base_url = param.get_param('mcp_chatbot.base_url', '')
+                fact_model_name = ''
+                fact_model_id = param.get_param('mcp_chatbot.fact_extraction_model_id')
+                if fact_model_id:
+                    record = request.env['mcp.llm.model'].sudo().browse(int(fact_model_id))
+                    if record.exists():
+                        fact_model_name = record.name
+                
+                rag_system_prompt = param.get_param('mcp_chatbot.rag_system_prompt', '')
+
                 fact_extractor = _get_fact_extractor()
                 memory_service = _get_memory_service()
                 fact_extractor.extract_facts_async(
-                    api_key=GROQ_API_KEY,
+                    api_key=api_key,
+                    base_url=base_url,
+                    extraction_model=fact_model_name,
+                    rag_system_prompt=rag_system_prompt,
                     user_id=user_id,
                     user_message=user_message,
                     bot_response=ai_reply,
@@ -234,17 +250,19 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def welcome(self):
+        bot_name = self._get_param('mcp_chatbot.bot_name', 'AI Assistant')
+
         if not request.env.user._is_public():
             partner_name = request.env.user.partner_id.name
             welcome_msg = (
                 f"Hello {partner_name}! Welcome back. "
-                f"I'm Bachwel, your AI assistant for home appliances and electronics. "
+                f"I'm {bot_name}, your AI assistant for home appliances and electronics. "
                 f"How can I help you today?"
             )
         else:
             welcome_msg = (
-                "Hello! I'm Bachwel, your AI assistant for home appliances and electronics in Tunisia. "
-                "How can I help you today?"
+                f"Hello! I'm {bot_name}, your AI assistant for home appliances and electronics in Tunisia. "
+                f"How can I help you today?"
             )
 
         return {'welcome': welcome_msg}
@@ -305,6 +323,7 @@ class MCPChatbotController(http.Controller):
                     'status':        'open',
                     'messages':      messages,
                     'session_token': partner_session.session_token,
+                    'summary_interval': int(self._get_param('mcp_chatbot.summary_interval', 10)),
                 }
 
         # ── Anonymous fallback: token-based lookup ───────────────────────────
@@ -329,7 +348,12 @@ class MCPChatbotController(http.Controller):
                 'content': msg.content,
             })
 
-        return {'status': 'open', 'messages': messages, 'session_token': session_token}
+        return {
+            'status': 'open',
+            'messages': messages,
+            'session_token': session_token,
+            'summary_interval': int(self._get_param('mcp_chatbot.summary_interval', 10)),
+        }
 
     # ------------------------------------------------------------------ #
     # POST /mcp_chatbot/close                                              #

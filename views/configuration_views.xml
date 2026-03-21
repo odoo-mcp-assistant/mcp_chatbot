@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- LLM Provider views                                           -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_llm_provider_list" model="ir.ui.view">
+        <field name="name">mcp.llm.provider.list</field>
+        <field name="model">mcp.llm.provider</field>
+        <field name="arch" type="xml">
+            <list string="LLM Providers">
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_mcp_llm_provider_form" model="ir.ui.view">
+        <field name="name">mcp.llm.provider.form</field>
+        <field name="model">mcp.llm.provider</field>
+        <field name="arch" type="xml">
+            <form string="LLM Provider">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                    </group>
+                    <notebook>
+                        <page string="Models">
+                            <field name="mcp_llm_model_ids">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="display_name_label"/>
+                                    <field name="active"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_mcp_llm_providers" model="ir.actions.act_window">
+        <field name="name">LLM Providers</field>
+        <field name="res_model">mcp.llm.provider</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- LLM Model views                                              -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_llm_model_list" model="ir.ui.view">
+        <field name="name">mcp.llm.model.list</field>
+        <field name="model">mcp.llm.model</field>
+        <field name="arch" type="xml">
+            <list string="LLM Models">
+                <field name="name"/>
+                <field name="display_name_label"/>
+                <field name="provider_id"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_mcp_llm_model_form" model="ir.ui.view">
+        <field name="name">mcp.llm.model.form</field>
+        <field name="model">mcp.llm.model</field>
+        <field name="arch" type="xml">
+            <form string="LLM Model">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="display_name_label"/>
+                        <field name="provider_id"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_mcp_llm_models" model="ir.actions.act_window">
+        <field name="name">LLM Models</field>
+        <field name="res_model">mcp.llm.model</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Menu structure                                               -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_mcp_chatbot_configuration"
+              name="Configuration"
+              parent="mcp_chatbot.menu_mcp_chatbot_root"
+              sequence="30"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_mcp_llm_providers"
+              name="LLM Providers"
+              parent="mcp_chatbot.menu_mcp_chatbot_configuration"
+              action="action_mcp_llm_providers"
+              sequence="10"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_mcp_llm_models"
+              name="LLM Models"
+              parent="mcp_chatbot.menu_mcp_chatbot_configuration"
+              action="action_mcp_llm_models"
+              sequence="20"
+              groups="base.group_system"/>
+
+</odoo>
