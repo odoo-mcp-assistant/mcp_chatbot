@@ -150,6 +150,9 @@
                         sessionToken = result.session_token;
                         sessionStorage.setItem(TOKEN_KEY, sessionToken);
                     }
+                    if (result && result.summary_interval) {
+                        summaryInterval = result.summary_interval;
+                    }
 
                     // result.status = 'closed' | 'not_found' → reset token
                     if (!result || result.status === 'closed' || result.status === 'not_found' || result.status === 'mismatch') {
@@ -209,6 +212,7 @@
         // These are declared here so sendMessage can access them
         var sessionToken = null;
         var welcomeText  = null;
+        var summaryInterval  = 10;
 
         function initChatbot() {
             if (window.__mcpChatbotInit) { return; }

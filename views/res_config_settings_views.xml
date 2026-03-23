@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Settings form view (inherits base settings)                  -->
+    <!-- ============================================================ -->
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">
+            res.config.settings.view.form.inherit.mcp.chatbot
+        </field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="15"/>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="MCP Chatbot"
+                     string="MCP Chatbot"
+                     name="mcp_chatbot"
+                     logo="/mcp_chatbot/static/src/img/chatbot_icon">
+
+                    <!-- General -->
+                    <block title="General"
+                           name="mcp_chatbot_general">
+                        <setting string="Chatbot Name"
+                                 help="The display name of the chatbot shown to customers."
+                                 id="chatbot_bot_name_setting">
+                            <field name="chatbot_bot_name"/>
+                        </setting>
+                    </block>
+
+                    <!-- LLM Configuration -->
+                    <block title="LLM Configuration"
+                           name="mcp_chatbot_llm">
+                        <setting string="API Key"
+                                 help="Groq API key used to authenticate LLM requests."
+                                 id="chatbot_api_key_setting">
+                            <field name="chatbot_api_key" style="width: 100%;"/>
+                        </setting>
+                        <setting string="Base URL"
+                                 help="Base URL for the LLM API."
+                                 id="chatbot_base_url_setting">
+                            <field name="chatbot_base_url" style="width: 100%;"/>
+                        </setting>
+                        <setting string="LLM Model"
+                                 help="The language model used to generate chatbot responses."
+                                 id="chatbot_llm_model_setting">
+                            <field name="chatbot_llm_model_id"/>
+                        </setting>
+                        <setting string="Max Tool Rounds"
+                                 help="Maximum number of tool-calling rounds per message. Default is 5."
+                                 id="chatbot_max_tool_rounds_setting">
+                            <field name="chatbot_max_tool_rounds"/>
+                        </setting>
+                        <setting id="chatbot_system_prompt_setting"
+                                 colspan="2">
+                            <div class="col-12">
+                                <label for="chatbot_system_prompt" string="System Prompt"/>
+                                <div class="text-muted">The system prompt sent to the LLM on every conversation.</div>
+                                <field name="chatbot_system_prompt"
+                                       widget="text"
+                                       style="width: 100%;"/>
+                            </div>
+                        </setting>
+                    </block>
+
+                    <!-- RAG -->
+                    <block title="RAG"
+                           name="mcp_chatbot_rag">
+                        <setting id="chatbot_rag_system_prompt_setting"
+                                 colspan="2">
+                            <div class="col-12">
+                                <label for="chatbot_rag_system_prompt" string="RAG System Prompt"/>
+                                <div class="text-muted">System prompt used by the fact extraction model.</div>
+                                <field name="chatbot_rag_system_prompt"
+                                    widget="text"
+                                    style="width: 100%;"/>
+                            </div>
+                        </setting>
+                        <setting string="Fact Extraction Model"
+                                 help="The language model used to extract long-term memory facts from conversations."
+                                 id="chatbot_fact_extraction_model_setting">
+                            <field name="chatbot_fact_extraction_model_id"/>
+                        </setting>
+                        
+                    </block>
+
+                    <!-- MCP Server -->
+                    <block title="MCP Server"
+                           name="mcp_chatbot_mcp">
+                        <setting string="MCP Server URL"
+                                 help="URL of the MCP server."
+                                 id="chatbot_mcp_server_url_setting">
+                            <field name="chatbot_mcp_server_url" style="width: 100%;"/>
+                        </setting>
+                    </block>
+
+                    <!-- Session Management -->
+                    <block title="Session Management"
+                           name="mcp_chatbot_session">
+                        <setting string="Idle Timeout (minutes)"
+                                 help="Minutes of inactivity before a session is automatically closed. Default is 30."
+                                 id="chatbot_idle_timeout_setting">
+                            <field name="chatbot_idle_timeout"/>
+                        </setting>
+                        <setting string="Summary Interval"
+                                 help="Number of new messages after which the conversation history is summarized. Default is 10."
+                                 id="chatbot_summary_interval_setting">
+                            <field name="chatbot_summary_interval"/>
+                        </setting>
+                    </block>
+
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Window action                                                 -->
+    <!-- ============================================================ -->
+    <record id="res_config_settings_action" model="ir.actions.act_window">
+        <field name="name">Configuration</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'mcp_chatbot'}</field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Settings menu item                                            -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_mcp_chatbot_settings"
+              name="Settings"
+              parent="mcp_chatbot.menu_mcp_chatbot_configuration"
+              action="mcp_chatbot.res_config_settings_action"
+              sequence="30"
+              groups="base.group_system"/>
+
+</odoo>
