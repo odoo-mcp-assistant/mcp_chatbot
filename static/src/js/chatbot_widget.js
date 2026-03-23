@@ -269,11 +269,10 @@
                 input.value = '';
                 sendBtn.disabled = true;
 
-                // ── Show compacting bar every 10 messages ─────────────────
+                // ── Show compacting bar every summaryInterval messages ────────────
                 // Count existing messages in the DOM (excluding typing indicators)
                 var msgCount = msgArea.querySelectorAll('.mcp-chatbot-msg.user, .mcp-chatbot-msg.assistant').length;
-                var isCompacting = msgCount > 0 && msgCount % 10 === 0;
-                var compactStart = Date.now();
+                var isCompacting = msgCount > 0 && msgCount % summaryInterval === 0;
 
                 if (isCompacting) {
                     showCompactingBar(msgArea);
