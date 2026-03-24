@@ -230,6 +230,8 @@ class MCPChatbotController(http.Controller):
                     user_message=user_message,
                     bot_response=ai_reply,
                     memory_service_module=memory_service,
+                    odoo_registry=request.env.registry,
+                    odoo_db=request.env.cr.dbname,
                 )
                 _logger.info('mcp_chatbot: fact extraction triggered for user %s', user_id)
             except Exception as exc:
