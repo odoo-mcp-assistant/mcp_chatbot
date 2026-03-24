@@ -1,4 +1,4 @@
-    <?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
     <!-- ============================================================ -->
@@ -58,7 +58,7 @@
                 <field name="category"/>
                 <separator/>
                 <filter string="Today" name="today"
-                        domain="[('create_date', '>=', datetime.datetime.now().replace(hour=0, minute=0, second=0))]"/>
+                        domain="[('create_date', '&gt;=', datetime.datetime.now().replace(hour=0, minute=0, second=0))]"/>
                 <group expand="1" string="Group By">
                     <filter string="User" name="group_by_partner"
                             context="{'group_by': 'partner_id'}"/>
