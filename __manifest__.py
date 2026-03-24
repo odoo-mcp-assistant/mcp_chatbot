@@ -25,6 +25,7 @@
         'data/cron.xml',
         'views/chatbot_session_views.xml',
         'views/chatbot_message_views.xml',
+        'views/chatbot_user_fact_views.xml',
         'views/snippet_template.xml',
         'views/configuration_views.xml',
         'views/res_config_settings_views.xml',
