@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- List view                                                      -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_user_fact_list" model="ir.ui.view">
+        <field name="name">mcp.chatbot.user.fact.list</field>
+        <field name="model">mcp.chatbot.user.fact</field>
+        <field name="arch" type="xml">
+            <list string="User Facts" default_order="create_date desc">
+                <field name="partner_id"/>
+                <field name="fact_text"/>
+                <field name="category"/>
+                <field name="chroma_doc_id" optional="hide"/>
+                <field name="create_date" string="Extracted At"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Form view                                                      -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_user_fact_form" model="ir.ui.view">
+        <field name="name">mcp.chatbot.user.fact.form</field>
+        <field name="model">mcp.chatbot.user.fact</field>
+        <field name="arch" type="xml">
+            <form string="User Fact">
+                <sheet>
+                    <group>
+                        <group string="Owner">
+                            <field name="partner_id"/>
+                            <field name="category"/>
+                            <field name="create_date" string="Extracted At"/>
+                        </group>
+                        <group string="ChromaDB Reference">
+                            <field name="chroma_doc_id"/>
+                        </group>
+                    </group>
+                    <group string="Fact Content">
+                        <field name="fact_text" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Search view                                                    -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_user_fact_search" model="ir.ui.view">
+        <field name="name">mcp.chatbot.user.fact.search</field>
+        <field name="model">mcp.chatbot.user.fact</field>
+        <field name="arch" type="xml">
+            <search string="Search Facts">
+                <field name="partner_id"/>
+                <field name="fact_text" string="Fact Content"/>
+                <field name="category"/>
+                <separator/>
+                <filter string="Today" name="today"
+                        domain="[('create_date', '&gt;=', datetime.datetime.now().replace(hour=0, minute=0, second=0))]"/>
+                <group expand="1" string="Group By">
+                    <filter string="User" name="group_by_partner"
+                            context="{'group_by': 'partner_id'}"/>
+                    <filter string="Category" name="group_by_category"
+                            context="{'group_by': 'category'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Window action                                                  -->
+    <!-- ============================================================ -->
+    <record id="action_mcp_chatbot_user_facts" model="ir.actions.act_window">
+        <field name="name">User Facts</field>
+        <field name="res_model">mcp.chatbot.user.fact</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_mcp_chatbot_user_fact_search"/>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Menu item (child of existing MCP Chatbot root menu)           -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_mcp_chatbot_user_facts"
+              name="User Facts"
+              parent="menu_mcp_chatbot_root"
+              action="action_mcp_chatbot_user_facts"
+              sequence="20"/>
+
+</odoo>
