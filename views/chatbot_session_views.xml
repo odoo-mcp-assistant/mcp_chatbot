@@ -42,8 +42,8 @@
                     </div>
                     <group>
                         <group string="Visitor">
-                            <field name="partner_id"/>
-                            <field name="session_token"/>
+                            <field name="partner_id" invisible="not partner_id"/>
+                            <field name="session_token" invisible="not session_token"/>
                         </group>
                         <group string="Statistics">
                             <field name="message_count"/>
