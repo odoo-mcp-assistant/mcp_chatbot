@@ -1,4 +1,4 @@
-/**
+    /**
      * mcp_chatbot/static/src/js/chatbot_widget.js
      *
      * Design decisions:
@@ -8,46 +8,54 @@
      *    closed or when the user logs out (Odoo invalidates the session).
      *    This prevents cross-user contamination entirely.
      *
-     * 2. The token key includes the Odoo uid (user ID from the cookie/session)
-     *    so logging out and logging in as a different user always produces
-     *    a different key — even in the same tab.
+     * 2. For logged‑in users, no token is stored. The session is identified
+     *    by the partner_id provided by the backend.
      *
      * 3. Chat history is fetched from the backend on every widget open,
-     *    not stored in the browser. The browser only stores the token.
-     *    This is the only source of truth.
+     *    not stored in the browser. The browser only stores the token
+     *    for anonymous users.
      *
      * 4. If the backend session is closed (cron) or not found, the token
-     *    is wiped and a fresh one is generated automatically.
+     *    is wiped and a fresh one is generated automatically for anonymous users.
      */
 
     (function () {
         'use strict';
 
-        // ──────────────────────────────────────────────────────────────
-        // Get current Odoo uid from the session cookie.
-        // Odoo always sets 'frontend_lang' and session cookies but the
-        // most reliable uid source is the data-uid attribute Odoo injects
-        // on the body, or the session cookie directly.
-        // ──────────────────────────────────────────────────────────────
-
         function getOdooUid() {
-            // Odoo 18 injects this on every website page
-            var body = document.querySelector('body');
-            if (body && body.dataset.uid) {
-                return body.dataset.uid;
+            // Make synchronous RPC call to backend to get the actual UID
+            var result = null;
+            
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/mcp_chatbot/get_uid', false);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            
+            var payload = JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'call',
+                id: Date.now(),
+                params: {}
+            });
+            
+            xhr.send(payload);
+            
+            if (xhr.status === 200) {
+                try {
+                    var response = JSON.parse(xhr.responseText);
+                    if (response && response.result && response.result.uid) {
+                        result = response.result.uid;
+                    }
+                } catch (e) {
+                    console.error('[mcp_chatbot] Failed to parse UID response:', e);
+                }
             }
-            // Fallback: check the logged_in meta tag Odoo injects
-            var meta = document.querySelector('meta[name="uid"]');
-            if (meta) {
-                return meta.getAttribute('content');
-            }
-            return '0';   // 0 = public/anonymous in Odoo
+            return result || '0';   // 0 = public/anonymous in Odoo
         }
 
         var uid = getOdooUid();
 
         // Token key scoped to uid — different users get completely
-        // different sessionStorage entries
+        // different sessionStorage entries.
         var TOKEN_KEY = 'mcp_chatbot_token_' + uid;
         var OPEN_KEY  = 'mcp_chatbot_open_'  + uid;
 
@@ -67,10 +75,14 @@
         }
 
         function getSessionToken() {
+            // For logged‑in users, no token is used.
+            if (uid !== '0') {
+                return null;
+            }
+
             var token = sessionStorage.getItem(TOKEN_KEY);
             if (!token) {
-                // Embed the uid inside the token so the backend can verify it
-                token = uid + '_' + uuidv4();
+                token = uuidv4();
                 sessionStorage.setItem(TOKEN_KEY, token);
             }
             return token;
@@ -143,22 +155,20 @@
         // ──────────────────────────────────────────────────────────────
 
         function loadHistoryFromBackend(token, container, callback) {
-            jsonRpc('/mcp_chatbot/history', { session_token: token })
+            var payload = {};
+            if (token) {
+                payload.session_token = token;
+            }
+            jsonRpc('/mcp_chatbot/history', payload)
                 .then(function (result) {
-                     // If backend sends back a corrected token, adopt it
-                    if (result && result.session_token && result.session_token !== sessionToken) {
-                        sessionToken = result.session_token;
-                        sessionStorage.setItem(TOKEN_KEY, sessionToken);
-                    }
                     if (result && result.summary_interval) {
                         summaryInterval = result.summary_interval;
                     }
-
-                    // result.status = 'closed' | 'not_found' → reset token
-                    if (!result || result.status === 'closed' || result.status === 'not_found' || result.status === 'mismatch') {
+                    // If session is closed or not found, reset the token
+                    if (!result || result.status === 'closed' || result.status === 'not_found') {
+                        // Clear the old token and generate a new one
                         clearSessionToken();
-                        sessionToken = getSessionToken();   // fresh token
-                        welcomeText  = null;
+                        sessionToken = getSessionToken();  // this will create a new token
                         container.innerHTML = '';
                         fetchWelcome(container, callback);
                         return;
@@ -212,7 +222,7 @@
         // These are declared here so sendMessage can access them
         var sessionToken = null;
         var welcomeText  = null;
-        var summaryInterval  = 10;
+        var summaryInterval = 10;   // default — overridden by backend response
 
         function initChatbot() {
             if (window.__mcpChatbotInit) { return; }
@@ -270,10 +280,8 @@
                 sendBtn.disabled = true;
 
                 // ── Show compacting bar every 10 messages ─────────────────
-                // Count existing messages in the DOM (excluding typing indicators)
                 var msgCount = msgArea.querySelectorAll('.mcp-chatbot-msg.user, .mcp-chatbot-msg.assistant').length;
-                var isCompacting = msgCount > 0 && msgCount % 10 === 0;
-                var compactStart = Date.now();
+                var isCompacting = msgCount > 0 && msgCount % summaryInterval === 0;
 
                 if (isCompacting) {
                     showCompactingBar(msgArea);
@@ -289,13 +297,6 @@
                     if (typingEl) { typingEl.remove(); }
                     if (pendingError) {
                         appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
-                    } else if (pendingReply && pendingReply.error === 'session_mismatch') {
-                        clearSessionToken();
-                        sessionToken = getSessionToken();
-                        welcomeText  = null;
-                        msgArea.innerHTML = '';
-                        fetchWelcome(msgArea, null);
-                        appendMessage(msgArea, 'assistant', 'Your session was reset. Please resend your message.');
                     } else {
                         appendMessage(msgArea, 'assistant', pendingReply && pendingReply.reply
                             ? pendingReply.reply
@@ -313,8 +314,11 @@
                     if (rpcDone) { displayReply(); }
                 }, typingDelay);
 
-                var payload = { session_token: sessionToken, message: text };
-
+                var payload = { message: text };
+                // Include session_token only for anonymous users
+                if (sessionToken) {
+                    payload.session_token = sessionToken;
+                }
                 // Pass welcome text on first message so backend saves it
                 if (welcomeText) {
                     payload.welcome = welcomeText;
