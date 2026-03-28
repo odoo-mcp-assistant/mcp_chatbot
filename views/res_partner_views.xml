@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="action_mcp_chatbot_users" model="ir.actions.act_window">
+        <field name="name">Chatbot Users</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('chatbot_session_ids', '!=', False)]</field>
+    </record>
+
+    <menuitem id="menu_mcp_chatbot_users"
+              name="Users"
+              parent="menu_mcp_chatbot_root"
+              action="action_mcp_chatbot_users"
+              sequence="1"/>
+
+</odoo>
