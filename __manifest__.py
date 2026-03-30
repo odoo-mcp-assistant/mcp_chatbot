@@ -18,6 +18,7 @@
         'base',
         'web',
         'website',
+        'auth_signup',      # Override _signup_create_user to reuse bare partners
         'im_livechat',      # Needed only for the History Summary menu parent
     ],
     'data': [

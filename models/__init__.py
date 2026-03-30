@@ -6,4 +6,5 @@ from . import chatbot_user_fact    # mcp.chatbot.user.fact
 from . import mcp_llm_model
 from . import mcp_llm_provider
 from . import inherit_res_partner
+from . import inherit_res_users
 from . import res_config_settings
