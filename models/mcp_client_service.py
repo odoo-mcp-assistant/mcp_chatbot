@@ -62,10 +62,14 @@ def _get_or_create_event_loop():
     return _event_loop
 
 
-def _run_async(coro):
+def _run_async(coro, timeout=60):
     loop = _get_or_create_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    return future.result(timeout=60)
+    try:                                                                                                     
+        return future.result(timeout=timeout)                                                                
+    except TimeoutError:                                                                                     
+        future.cancel()          # kill the orphaned coroutine                                               
+        raise 
 
 
 # ---------------------------------------------------------------------------
@@ -119,13 +123,20 @@ async def _async_process_message(user_message, history, authenticated_partner_id
 
     client = OpenAI(
         api_key=api_key,
-        base_url=base_url
+        base_url=base_url,                                                                                  
+        max_retries=2,          # default is 2 but be explicit                                              
+        timeout=30.0,
     )
 
     verified_partner_id = None  # Set when verify_email_otp succeeds in this call
 
     # Agentic loop — run until the model stops calling tools or we hit the cap.
     for round_number in range(max_tool_rounds):
+        # Check if this coroutine was cancelled (e.g. timeout in _run_async)                                
+        if asyncio.current_task() and asyncio.current_task().cancelled():                                   
+            _logger.info("MCP: coroutine cancelled, stopping agentic loop")                                 
+            return "Sorry, the request timed out. Please try again.", verified_partner_id
+
         response = client.chat.completions.create(
             model=model_name,
             messages=conversation,
@@ -292,6 +303,8 @@ class MCPClientService(models.AbstractModel):
         client = OpenAI(
             api_key=settings['api_key'],
             base_url=settings['base_url'],
+            max_retries=2,                                                                                  
+            timeout=30.0,
         )
 
         messages = [
