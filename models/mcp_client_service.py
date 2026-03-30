@@ -231,27 +231,29 @@ async def _async_process_message(user_message, history, authenticated_partner_id
     # Omit tools entirely so the model cannot attempt another tool call
     # (Groq returns 400 if the model generates a call with tool_choice="none").
     _logger.warning("MCP: tool round cap (%d) reached, forcing final reply", max_tool_rounds)
-
-    # Build a clean message list without tool-call/tool-result turns,
-    # since the API rejects orphaned tool messages when tools are absent.
-    fallback_messages = []
-    for msg in conversation:
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            fallback_messages.append({
-                "role": "assistant",
-                "content": msg.content or "",
-            })
-        elif isinstance(msg, dict) and msg.get("role") == "tool":
-            continue
-        else:
-            fallback_messages.append(msg)
-
-    final_response = client.chat.completions.create(
-        model=model_name,
-        messages=fallback_messages,
-        temperature=0.7,
-    )
-    return final_response.choices[0].message.content or "", verified_partner_id
+    # Tell the model it has no more tools so it doesn't hallucinate a call                                  
+    # (Groq returns 400 when the model generates a tool call with tool_choice="none").                      
+    conversation.append({                                                                                   
+        "role": "user",                                                                                     
+        "content": (                                                                                        
+            "You have no tools available. Summarise what you have done so far "                             
+            "and respond to the user in plain text only."                                                   
+        ),                                                                                                  
+    })                                                                                                      
+  
+    try:                                                                                                    
+        final_response = client.chat.completions.create(                                                    
+            model=model_name,                                                                               
+            messages=conversation,                                                                          
+            temperature=0.7,                                                                                
+        )                                                                                                   
+        return final_response.choices[0].message.content or "", verified_partner_id                         
+    except Exception as exc:                                                                                
+        _logger.warning("MCP: fallback completion also failed: %s", exc)                                    
+        return (                                                                                            
+            "I've looked into your request but wasn't able to finish processing. "                          
+            "Could you please try rephrasing or simplifying your question?"                                 
+        ), verified_partner_id
 
 
 # ---------------------------------------------------------------------------
