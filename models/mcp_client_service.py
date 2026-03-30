@@ -162,6 +162,30 @@ async def _async_process_message(user_message, history, authenticated_partner_id
             if tool_name in AUTH_REQUIRED_TOOLS:
                 if not isinstance(args, dict):
                     args = {}
+                if not authenticated_partner_id:
+                    result_text = json.dumps({
+                        "error": "Authentication required",
+                        "suggestion": (
+                            "This action requires a verified identity. "
+                            "The user can either: "
+                            "(1) Sign in to their portal/website account, or "
+                            "(2) Verify via email — ask for their email address, "
+                            "then call send_verification_email, and once they "
+                            "reply with the code call verify_email_otp."
+                        ),
+                    })
+                    _logger.info(
+                        "MCP: round %d — tool '%s' blocked (no partner_id), "
+                        "returning auth suggestion",
+                        round_number + 1, tool_name,
+                    )
+                    conversation.append({
+                        "role":         "tool",
+                        "tool_call_id": tool_call.id,
+                        "name":         tool_name,
+                        "content":      result_text,
+                    })
+                    continue
                 args['partner_id'] = authenticated_partner_id
 
             _logger.info(

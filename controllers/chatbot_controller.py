@@ -215,16 +215,7 @@ class MCPChatbotController(http.Controller):
         else:
             # Type 1 — fully anonymous
             identity_msg = (
-                "Current user: not logged in (anonymous visitor). "
-                "If they ask to do anything that requires authentication "
-                "(orders, invoices, profile, etc.), you need to verify their identity first.\n"
-                "IMPORTANT — the verification takes THREE separate conversation turns:\n"
-                "  Turn 1: Ask the user for their email address. Do NOT call any tools. "
-                "Just ask and STOP.\n"
-                "  Turn 2: The user provides their email. Call send_verification_email with "
-                "that email. Tell them to check their inbox for the 6-digit code. Then STOP.\n"
-                "  Turn 3: The user provides the code. Call verify_email_otp with their email "
-                "and the code. Once verified, proceed with their original request."
+                "Current user: not logged in (anonymous visitor)."
             )
 
         conversation_history = [
