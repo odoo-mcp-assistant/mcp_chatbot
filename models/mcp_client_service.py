@@ -167,11 +167,19 @@ async def _async_process_message(user_message, history, authenticated_partner_id
                         "error": "Authentication required",
                         "suggestion": (
                             "This action requires a verified identity. "
-                            "The user can either: "
-                            "(1) Sign in to their portal/website account, or "
-                            "(2) Verify via email — ask for their email address, "
-                            "then call send_verification_email, and once they "
-                            "reply with the code call verify_email_otp."
+                            "The user can either sign in to their account, "
+                            "or verify via email using these steps:\n"
+                            "Step 1: Ask the user for their email address. "
+                            "Send ONLY this question and STOP. Do not call any tool.\n"
+                            "Step 2: Once the user replies with their email, "
+                            "call send_verification_email with that email. "
+                            "Tell them a code was sent and STOP. "
+                            "Do not repeat yourself. One short sentence is enough.\n"
+                            "Step 3: Once the user replies with the 6-digit code, "
+                            "call verify_email_otp with their email and code.\n"
+                            "Step 4: Once verified, retry the original action.\n"
+                            "IMPORTANT: Each step requires a separate user reply. "
+                            "Do NOT combine steps. Send one short message per step and wait."
                         ),
                     })
                     _logger.info(
@@ -219,13 +227,28 @@ async def _async_process_message(user_message, history, authenticated_partner_id
                 "content":      result_text,
             })
 
-    # Safety fallback — cap reached, ask the model to wrap up with what it has
+    # Safety fallback — cap reached, force a plain text reply.
+    # Omit tools entirely so the model cannot attempt another tool call
+    # (Groq returns 400 if the model generates a call with tool_choice="none").
     _logger.warning("MCP: tool round cap (%d) reached, forcing final reply", max_tool_rounds)
+
+    # Build a clean message list without tool-call/tool-result turns,
+    # since the API rejects orphaned tool messages when tools are absent.
+    fallback_messages = []
+    for msg in conversation:
+        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+            fallback_messages.append({
+                "role": "assistant",
+                "content": msg.content or "",
+            })
+        elif isinstance(msg, dict) and msg.get("role") == "tool":
+            continue
+        else:
+            fallback_messages.append(msg)
+
     final_response = client.chat.completions.create(
         model=model_name,
-        messages=conversation,
-        tools=_tool_schemas,
-        tool_choice="none",
+        messages=fallback_messages,
         temperature=0.7,
     )
     return final_response.choices[0].message.content or "", verified_partner_id
