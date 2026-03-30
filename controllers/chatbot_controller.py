@@ -131,6 +131,10 @@ class MCPChatbotController(http.Controller):
                 return {'error': 'session_token is required for anonymous users'}
             session = Session.get_or_create_session(session_token=session_token)
 
+        # Anonymous users that already completed OTP verification in a prior
+        # message get their verified partner treated as authenticated.
+        effective_partner_id = partner_id or (session.partner_id.id if session.partner_id else None)
+
         # ── Touch activity — resets the idle timeout clock ───────────────
         session.touch_activity()
 
@@ -187,13 +191,40 @@ class MCPChatbotController(http.Controller):
 
         # ── Identity context injection ───────────────────────────────────
         if partner_id:
+            # Type 3 — full portal / internal login via Odoo session
             identity_msg = (
-                f"Current authenticated user: "
-                f"name='{request.env.user.partner_id.name}', "
+                f"Current authenticated user (portal account): "
+                f"name='{request.env.user.partner_id.name}'."
             )
+        elif session.partner_id:
+            vp = session.partner_id
+            if vp.user_ids:
+                # Type 3 edge-case — OTP email matched an existing portal account
+                identity_msg = (
+                    f"Current user: verified via email OTP and has a portal account. "
+                    f"name='{vp.name}', email='{vp.email}'. "
+                    f"They can use all authentication-required actions."
+                )
+            else:
+                # Type 2 — OTP-verified contact (no Odoo account, just a partner record)
+                identity_msg = (
+                    f"Current user: verified via email OTP (contact only, no portal account). "
+                    f"name='{vp.name}', email='{vp.email}'. "
+                    f"They can use authentication-required actions."
+                )
         else:
+            # Type 1 — fully anonymous
             identity_msg = (
-                "Current user: not logged in (anonymous visitor)."
+                "Current user: not logged in (anonymous visitor). "
+                "If they ask to do anything that requires authentication "
+                "(orders, invoices, profile, etc.), you need to verify their identity first.\n"
+                "IMPORTANT — the verification takes THREE separate conversation turns:\n"
+                "  Turn 1: Ask the user for their email address. Do NOT call any tools. "
+                "Just ask and STOP.\n"
+                "  Turn 2: The user provides their email. Call send_verification_email with "
+                "that email. Tell them to check their inbox for the 6-digit code. Then STOP.\n"
+                "  Turn 3: The user provides the code. Call verify_email_otp with their email "
+                "and the code. Once verified, proceed with their original request."
             )
 
         conversation_history = [
@@ -204,9 +235,9 @@ class MCPChatbotController(http.Controller):
         ] + conversation_history
 
         # ── RAG: retrieve and inject long-term memories ──────────────────
-        user_id = str(partner_id) if partner_id else None
+        user_id = str(effective_partner_id) if effective_partner_id else None
 
-        # Only for authenticated users — anonymous users have no stored facts
+        # Only for authenticated/verified users — pure anonymous sessions have no stored facts
         if user_id:
             try:
                 memory_service = _get_memory_service()
@@ -225,10 +256,30 @@ class MCPChatbotController(http.Controller):
 
         # ── Call MCP pipeline ────────────────────────────────────────────
         try:
-            ai_reply = mcp_service.process_message(user_message, conversation_history, partner_id)
+            ai_reply, new_verified_partner_id = mcp_service.process_message(
+                user_message, conversation_history,
+                authenticated_partner_id=effective_partner_id,
+            )
         except Exception as exc:
             _logger.error('mcp_chatbot: MCP pipeline error: %s', exc)
-            ai_reply = 'Sorry, I encountered an error. Please try again.'
+            ai_reply, new_verified_partner_id = 'Sorry, I encountered an error. Please try again.', None
+
+        # If the OTP flow completed in this turn, persist partner_id on the session
+        if new_verified_partner_id and not session.partner_id:
+            try:
+                # Validate that the partner actually exists before writing
+                partner = request.env['res.partner'].sudo().browse(new_verified_partner_id)
+                if partner.exists():
+                    session.sudo().write({'partner_id': new_verified_partner_id})
+                    effective_partner_id = new_verified_partner_id
+                    user_id = str(new_verified_partner_id)
+                else:
+                    _logger.warning(
+                        'mcp_chatbot: OTP returned partner_id=%s but record does not exist',
+                        new_verified_partner_id,
+                    )
+            except Exception as exc:
+                _logger.error('mcp_chatbot: failed to persist verified partner: %s', exc)
 
         # ── Persist assistant reply ──────────────────────────────────────
         Message.create({

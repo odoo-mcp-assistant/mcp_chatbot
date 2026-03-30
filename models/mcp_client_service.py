@@ -106,6 +106,11 @@ async def _async_connect_to_client(server_url):
 async def _async_process_message(user_message, history, authenticated_partner_id=None,
                                   api_key=None, base_url=None, model_name=None,
                                   system_prompt=None, max_tool_rounds=5):
+    """
+    Returns (reply_text, verified_partner_id_or_None).
+    verified_partner_id is non-None when verify_email_otp succeeded during this call —
+    the controller uses it to persist the session upgrade.
+    """
     global _mcp_client, _tool_schemas
 
     conversation = [{"role": "system", "content": system_prompt}]
@@ -116,6 +121,8 @@ async def _async_process_message(user_message, history, authenticated_partner_id
         api_key=api_key,
         base_url=base_url
     )
+
+    verified_partner_id = None  # Set when verify_email_otp succeeds in this call
 
     # Agentic loop — run until the model stops calling tools or we hit the cap.
     for round_number in range(max_tool_rounds):
@@ -131,7 +138,7 @@ async def _async_process_message(user_message, history, authenticated_partner_id
 
         # No tool calls — model is done, return its text reply
         if not message.tool_calls:
-            return message.content or ""
+            return message.content or "", verified_partner_id
 
         # Append the assistant turn with its tool call requests
         conversation.append(message)
@@ -151,15 +158,30 @@ async def _async_process_message(user_message, history, authenticated_partner_id
                 round_number + 1, tool_name, args,
             )
 
-            result = (
+            result_content = (
                 await _mcp_client.session.call_tool(tool_name, arguments=args or {})
             ).content
+
+            result_text = str(result_content)
+
+            # When verify_email_otp succeeds, upgrade authenticated_partner_id
+            # in-flight so that any auth-required tool the LLM calls in subsequent
+            # rounds of THIS same turn uses the verified partner.
+            if tool_name == 'verify_email_otp':
+                try:
+                    raw = result_content[0].text if result_content else '{}'
+                    data = json.loads(raw)
+                    if data.get('success') and data.get('partner_id'):
+                        authenticated_partner_id = data['partner_id']
+                        verified_partner_id = data['partner_id']
+                except Exception as exc:
+                    _logger.debug("MCP: failed to parse verify_email_otp result: %s", exc)
 
             conversation.append({
                 "role":         "tool",
                 "tool_call_id": tool_call.id,
                 "name":         tool_name,
-                "content":      str(result),
+                "content":      result_text,
             })
 
     # Safety fallback — cap reached, ask the model to wrap up with what it has
@@ -171,7 +193,7 @@ async def _async_process_message(user_message, history, authenticated_partner_id
         tool_choice="none",
         temperature=0.7,
     )
-    return final_response.choices[0].message.content or ""
+    return final_response.choices[0].message.content or "", verified_partner_id
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +262,7 @@ class MCPClientService(models.AbstractModel):
         settings = self._get_llm_settings()
 
         try:
-            reply = _run_async(
+            reply, verified_partner_id = _run_async(
                 _async_process_message(
                     user_message,
                     history,
@@ -252,13 +274,13 @@ class MCPClientService(models.AbstractModel):
                     max_tool_rounds=settings['max_tool_rounds'],
                 )
             )
-            return reply
+            return reply, verified_partner_id
         except TimeoutError:
             _logger.error("MCP: process_message timed out")
-            return "Sorry, the request timed out. Please try again."
+            return "Sorry, the request timed out. Please try again.", None
         except Exception as exc:
             _logger.error("MCP: process_message error: %s", exc)
-            return f"Sorry, I encountered an error: {exc}"
+            return f"Sorry, I encountered an error: {exc}", None
 
     @api.model
     def summarize_history(self, history):
