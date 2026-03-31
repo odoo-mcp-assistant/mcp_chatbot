@@ -159,35 +159,54 @@ class MCPChatbotController(http.Controller):
         summary_interval = int(self._get_param('mcp_chatbot.summary_interval', 10))
 
         # ── Build conversation history ───────────────────────────────────
+        # IMPORTANT: _async_process_message() already appends the current
+        # user message as the final {"role": "user"} turn, so we must
+        # exclude it here to avoid:
+        #   (a) the message being buried inside the summary when the
+        #       summarisation threshold is hit on this very turn, leaving
+        #       the LLM with no direct user turn to respond to;
+        #   (b) the message appearing twice (once in unsummarized history,
+        #       once appended by process_message) on normal turns.
+        # We work only with "prior history" — everything before the
+        # message we just persisted above.
         mcp_service = request.env['mcp.client.service'].sudo()
 
-        messages_count     = len(session.message_ids)
-        unsummarized_count = messages_count - session.last_summarized_count
+        all_history   = session.get_conversation_history()
+        prior_history = all_history[:-1] if all_history else []   # exclude current user msg
+        prior_count   = len(prior_history)
+
+        unsummarized_count = prior_count - session.last_summarized_count
 
         if unsummarized_count >= summary_interval:
-            messages_to_summarize = session.get_conversation_history()[-unsummarized_count:]
-            summary_prefix = [{
-                'role':    'system',
-                'content': f'Summary of the conversation so far, keep it as it is: {session.history_summary or ""}',
-            }]
+            messages_to_summarize = prior_history[-unsummarized_count:]
+            summary_prefix = []
+            if session.history_summary:
+                summary_prefix = [{
+                    'role':    'system',
+                    'content': f'Previous summary to extend: {session.history_summary}',
+                }]
             new_summary = mcp_service.summarize_history(summary_prefix + messages_to_summarize)
             session.sudo().write({
                 'history_summary':       new_summary,
-                'last_summarized_count': messages_count,
+                'last_summarized_count': prior_count,
             })
             unsummarized_count = 0
 
         unsummarized_messages = (
-            session.get_conversation_history()[-unsummarized_count:]
+            prior_history[-unsummarized_count:]
             if unsummarized_count > 0 else []
         )
 
-        conversation_history = [
-            {
+        # Only inject the summary block when a summary actually exists,
+        # otherwise the LLM misreads the raw messages after it as summarised content.
+        summary_block = []
+        if session.history_summary:
+            summary_block = [{
                 'role':    'system',
-                'content': f'Summary of the conversation so far, keep it as it is: {session.history_summary or ""}',
-            }
-        ] + unsummarized_messages
+                'content': f'Summary of the conversation so far: {session.history_summary}',
+            }]
+
+        conversation_history = summary_block + unsummarized_messages
 
         # ── Identity context injection ───────────────────────────────────
         if partner_id:
