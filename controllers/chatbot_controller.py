@@ -361,7 +361,7 @@ class MCPChatbotController(http.Controller):
                 f"How can I help you today?"
             )
 
-        return {'welcome': welcome_msg}
+        return {'welcome': welcome_msg, 'bot_name': bot_name}
 
     # ------------------------------------------------------------------ #
     # POST /mcp_chatbot/history                                            #
@@ -382,10 +382,12 @@ class MCPChatbotController(http.Controller):
         For anonymous users, the session is identified by the provided token.
 
         Returns:
-            { "status": "open",      "messages": [...], "summary_interval": N }
+            { "status": "open",      "messages": [...], "summary_interval": N, "bot_name": "..." }
             { "status": "closed",    "messages": [] }
             { "status": "not_found", "messages": [] }
         """
+        bot_name = self._get_param('mcp_chatbot.bot_name', 'AI Assistant')
+
         # ── Resolve partner if logged in ────────────────────────────────────
         partner_id = None
         if not request.env.user._is_public():
@@ -400,7 +402,7 @@ class MCPChatbotController(http.Controller):
                 ('state', '=', 'open'),
             ], order='create_date desc', limit=1)
             if not session:
-                return {'status': 'not_found', 'messages': []}
+                return {'status': 'not_found', 'messages': [], 'bot_name': bot_name}
             messages = []
             for msg in session.message_ids.sorted('create_date'):
                 messages.append({
@@ -411,20 +413,21 @@ class MCPChatbotController(http.Controller):
                 'status': 'open',
                 'messages': messages,
                 'summary_interval': int(self._get_param('mcp_chatbot.summary_interval', 10)),
+                'bot_name': bot_name,
             }
 
         # ── Anonymous user: lookup by token ──────────────────────────────────
         if not session_token:
-            return {'status': 'not_found', 'messages': []}
+            return {'status': 'not_found', 'messages': [], 'bot_name': bot_name}
 
         session = Session.search([
             ('session_token', '=', session_token),
         ], limit=1)
         if not session:
-            return {'status': 'not_found', 'messages': []}
+            return {'status': 'not_found', 'messages': [], 'bot_name': bot_name}
 
         if session.state == 'closed':
-            return {'status': 'closed', 'messages': []}
+            return {'status': 'closed', 'messages': [], 'bot_name': bot_name}
 
         messages = []
         for msg in session.message_ids.sorted('create_date'):
@@ -437,6 +440,7 @@ class MCPChatbotController(http.Controller):
             'status': 'open',
             'messages': messages,
             'summary_interval': int(self._get_param('mcp_chatbot.summary_interval', 10)),
+            'bot_name': bot_name,
         }
 
     # ------------------------------------------------------------------ #

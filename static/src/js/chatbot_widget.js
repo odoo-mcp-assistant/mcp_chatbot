@@ -164,6 +164,9 @@
                     if (result && result.summary_interval) {
                         summaryInterval = result.summary_interval;
                     }
+                    if (result && result.bot_name) {
+                        updateHeaderName(result.bot_name);
+                    }
                     // If session is closed or not found, reset the token
                     if (!result || result.status === 'closed' || result.status === 'not_found') {
                         // Clear the old token and generate a new one
@@ -181,11 +184,11 @@
                         // Brand new session — show LLM welcome
                         fetchWelcome(container, callback);
                     } else {
-                        // Restore messages from backend
+                        // Restore messages from backend — real session exists
                         messages.forEach(function (msg) {
                             appendMessage(container, msg.role, msg.content);
                         });
-                        if (callback) { callback(); }
+                        if (callback) { callback(true); }
                     }
                 })
                 .catch(function () {
@@ -204,15 +207,27 @@
                     var msg = (result && result.welcome)
                         ? result.welcome
                         : 'Hello! How can I help you today?';
+                    if (result && result.bot_name) {
+                        updateHeaderName(result.bot_name);
+                    }
                     welcomeText = msg;
                     appendMessage(container, 'assistant', msg);
-                    if (callback) { callback(); }
+                    if (callback) { callback(false); }   // no real session yet
                 })
                 .catch(function () {
                     welcomeText = 'Hello! How can I help you today?';
                     appendMessage(container, 'assistant', welcomeText);
-                    if (callback) { callback(); }
+                    if (callback) { callback(false); }   // no real session yet
                 });
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        // Header helpers
+        // ──────────────────────────────────────────────────────────────
+
+        function updateHeaderName(name) {
+            var titleEl = document.getElementById('mcp_chatbot_title');
+            if (titleEl && name) { titleEl.textContent = name; }
         }
 
         // ──────────────────────────────────────────────────────────────
@@ -231,6 +246,10 @@
             var bubble   = document.getElementById('mcp_chatbot_bubble');
             var chatWin  = document.getElementById('mcp_chatbot_window');
             var closeBtn = chatWin && chatWin.querySelector('.mcp-chatbot-close');
+            var endSessionBtn = chatWin && chatWin.querySelector('.mcp-chatbot-end-session');
+            var confirmOverlay = chatWin && chatWin.querySelector('.mcp-chatbot-confirm-overlay');
+            var confirmYes    = chatWin && chatWin.querySelector('.mcp-chatbot-confirm-yes');
+            var confirmNo     = chatWin && chatWin.querySelector('.mcp-chatbot-confirm-no');
             var msgArea  = document.getElementById('mcp_chatbot_messages');
             var input    = document.getElementById('mcp_chatbot_input');
             var sendBtn  = document.getElementById('mcp_chatbot_send');
@@ -240,13 +259,26 @@
             sessionToken = getSessionToken();
             var isOpen   = sessionStorage.getItem(OPEN_KEY) === '1';
 
+            // ── End-session button visibility ─────────────────────────
+            function setEndSessionVisible(visible) {
+                if (!endSessionBtn) { return; }
+                if (visible) {
+                    endSessionBtn.classList.remove('d-none');
+                } else {
+                    endSessionBtn.classList.add('d-none');
+                }
+            }
+            // Hidden until we confirm a real session exists
+            setEndSessionVisible(false);
+
             // ── Open / close ──────────────────────────────────────────
             function openWindow() {
                 chatWin.classList.remove('d-none');
                 isOpen = true;
                 sessionStorage.setItem(OPEN_KEY, '1');
                 msgArea.innerHTML = '';
-                loadHistoryFromBackend(sessionToken, msgArea, function () {
+                loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
+                    setEndSessionVisible(hasSession);
                     input.focus();
                 });
             }
@@ -264,6 +296,38 @@
 
             if (closeBtn) {
                 closeBtn.addEventListener('click', closeWindow);
+            }
+
+            // ── End session (with confirmation) ──────────────────────
+            if (endSessionBtn && confirmOverlay) {
+                endSessionBtn.addEventListener('click', function () {
+                    confirmOverlay.classList.remove('d-none');
+                });
+
+                confirmNo.addEventListener('click', function () {
+                    confirmOverlay.classList.add('d-none');
+                });
+
+                confirmYes.addEventListener('click', function () {
+                    confirmOverlay.classList.add('d-none');
+                    var payload = {};
+                    if (sessionToken) {
+                        payload.session_token = sessionToken;
+                    }
+                    jsonRpc('/mcp_chatbot/close', payload)
+                        .then(function () {
+                            setEndSessionVisible(false);
+                            clearSessionToken();
+                            sessionToken = getSessionToken();
+                            chatWin.classList.add('d-none');
+                            isOpen = false;
+                            sessionStorage.setItem(OPEN_KEY, '0');
+                            msgArea.innerHTML = '';
+                        })
+                        .catch(function (err) {
+                            console.error('[mcp_chatbot] Failed to close session:', err);
+                        });
+                });
             }
 
             if (isOpen) {
@@ -301,6 +365,7 @@
                         appendMessage(msgArea, 'assistant', pendingReply && pendingReply.reply
                             ? pendingReply.reply
                             : 'Sorry, I could not get a reply.');
+                        setEndSessionVisible(true);   // session now exists
                     }
                     sendBtn.disabled = false;
                     input.focus();

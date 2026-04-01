@@ -13,7 +13,7 @@
 
             <!-- ── Chat bubble trigger ──────────────────────────── -->
             <div id="mcp_chatbot_bubble" class="mcp-chatbot-bubble" title="Chat with us">
-                <img src="/mcp_chatbot/static/src/img/chatbot_icon" 
+                <img src="/mcp_chatbot/static/src/img/chat-bot-logo.png" 
                     alt="Chat" 
                     style="width: 100%; height: 100%; object-fit: cover; display: block;"/>
             </div>
@@ -23,10 +23,34 @@
 
                 <!-- Header -->
                 <div class="mcp-chatbot-header">
-                    <span class="mcp-chatbot-title">AI Assistant</span>
-                    <button class="mcp-chatbot-close" title="Close">
-                        <i class="fa fa-times"/>
-                    </button>
+                    <div class="mcp-chatbot-header-identity">
+                        <img class="mcp-chatbot-header-logo"
+                             src="/mcp_chatbot/static/src/img/chat-bot-logo.png"
+                             alt="Bot"/>
+                        <div class="mcp-chatbot-header-info">
+                            <span id="mcp_chatbot_title" class="mcp-chatbot-title">AI Assistant</span>
+                            <span class="mcp-chatbot-status">Online</span>
+                        </div>
+                    </div>
+                    <div class="mcp-chatbot-header-actions">
+                        <button class="mcp-chatbot-end-session" title="End session">
+                            <i class="fa fa-power-off"/>
+                        </button>
+                        <button class="mcp-chatbot-close" title="Minimize">
+                            <i class="fa fa-times"/>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- End session confirmation overlay -->
+                <div class="mcp-chatbot-confirm-overlay d-none">
+                    <div class="mcp-chatbot-confirm-dialog">
+                        <p>Are you sure you want to end this session?</p>
+                        <div class="mcp-chatbot-confirm-actions">
+                            <button class="mcp-chatbot-confirm-yes">Yes</button>
+                            <button class="mcp-chatbot-confirm-no">No</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Message area -->
