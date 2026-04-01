@@ -25,6 +25,47 @@
     transform: scale(1.08);
 }
 
+/* ── Bubble hover tooltip ────────────────────────────────────── */
+.mcp-chatbot-bubble-tooltip {
+    position: fixed;
+    bottom: 30px;
+    right: 90px;
+    background: #ffffff;
+    color: #1a1a1a;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 10px 14px;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    border: 1px solid #e8e8e8;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 9997;
+}
+
+/* Show when bubble is hovered — relies on JS adding .mcp-bubble-hovered to bubble */
+.mcp-chatbot-bubble.mcp-bubble-hovered ~ .mcp-chatbot-bubble-tooltip {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Arrow pointing right toward the bubble */
+.mcp-chatbot-bubble-tooltip-arrow {
+    position: absolute;
+    right: -7px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    border-left: 7px solid #ffffff;
+    filter: drop-shadow(1px 0 0 #e8e8e8);
+}
+
 /* ── Chat window ─────────────────────────────────────────────── */
 .mcp-chatbot-window {
     position: fixed;
@@ -92,7 +133,6 @@
 
 .mcp-chatbot-status {
     font-size: 11px;
-    color: #22c55e;
     font-weight: 500;
     display: flex;
     align-items: center;
@@ -105,9 +145,24 @@
     display: inline-block;
     width: 6px;
     height: 6px;
-    background: #22c55e;
     border-radius: 50%;
     flex-shrink: 0;
+}
+
+.mcp-chatbot-status.mcp-status-online {
+    color: #22c55e;
+}
+
+.mcp-chatbot-status.mcp-status-online::before {
+    background: #22c55e;
+}
+
+.mcp-chatbot-status.mcp-status-offline {
+    color: #9ca3af;
+}
+
+.mcp-chatbot-status.mcp-status-offline::before {
+    background: #9ca3af;
 }
 
 /* Action buttons on the right */
@@ -309,6 +364,13 @@
 
 .mcp-chatbot-input:focus {
     border-color: #006699;
+}
+
+.mcp-chatbot-input:disabled {
+    background: #f3f4f6;
+    color: #9ca3af;
+    cursor: not-allowed;
+    border-color: #e5e7eb;
 }
 
 .mcp-chatbot-send {

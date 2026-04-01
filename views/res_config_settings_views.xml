@@ -26,6 +26,11 @@
                                  id="chatbot_bot_name_setting">
                             <field name="chatbot_bot_name"/>
                         </setting>
+                        <setting string="Status"
+                                 help="Set to Offline to disable the chat widget — visitors will see an Offline badge and cannot send messages."
+                                 id="chatbot_status_setting">
+                            <field name="chatbot_status"/>
+                        </setting>
                     </block>
 
                     <!-- LLM Configuration -->

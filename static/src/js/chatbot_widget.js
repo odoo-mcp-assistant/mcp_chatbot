@@ -164,9 +164,6 @@
                     if (result && result.summary_interval) {
                         summaryInterval = result.summary_interval;
                     }
-                    if (result && result.bot_name) {
-                        updateHeaderName(result.bot_name);
-                    }
                     // If session is closed or not found, reset the token
                     if (!result || result.status === 'closed' || result.status === 'not_found') {
                         // Clear the old token and generate a new one
@@ -207,9 +204,6 @@
                     var msg = (result && result.welcome)
                         ? result.welcome
                         : 'Hello! How can I help you today?';
-                    if (result && result.bot_name) {
-                        updateHeaderName(result.bot_name);
-                    }
                     welcomeText = msg;
                     appendMessage(container, 'assistant', msg);
                     if (callback) { callback(false); }   // no real session yet
@@ -222,13 +216,53 @@
         }
 
         // ──────────────────────────────────────────────────────────────
-        // Header helpers
+        // Header + tooltip helpers
         // ──────────────────────────────────────────────────────────────
 
         function updateHeaderName(name) {
             var titleEl = document.getElementById('mcp_chatbot_title');
             if (titleEl && name) { titleEl.textContent = name; }
+            var tooltipNameEl = document.getElementById('mcp_chatbot_tooltip_name');
+            if (tooltipNameEl && name) { tooltipNameEl.textContent = name; }
         }
+
+        function updateStatus(status) {
+            var statusEl  = document.querySelector('.mcp-chatbot-status');
+            var inputEl   = document.getElementById('mcp_chatbot_input');
+            var sendEl    = document.getElementById('mcp_chatbot_send');
+
+            if (status === 'offline') {
+                if (statusEl) {
+                    statusEl.textContent = 'Offline';
+                    statusEl.classList.add('mcp-status-offline');
+                    statusEl.classList.remove('mcp-status-online');
+                }
+                if (inputEl) {
+                    inputEl.disabled    = true;
+                    inputEl.placeholder = 'Chat is currently unavailable.';
+                }
+                if (sendEl)  { sendEl.disabled = true; }
+            } else {
+                if (statusEl) {
+                    statusEl.textContent = 'Online';
+                    statusEl.classList.add('mcp-status-online');
+                    statusEl.classList.remove('mcp-status-offline');
+                }
+                if (inputEl) {
+                    inputEl.disabled    = false;
+                    inputEl.placeholder = 'Type your message...';
+                }
+                if (sendEl)  { sendEl.disabled = false; }
+            }
+        }
+
+        // Fetch bot metadata once on page load — populates header title, tooltip, and status badge
+        jsonRpc('/mcp_chatbot/info', {})
+            .then(function (result) {
+                if (result && result.bot_name) { updateHeaderName(result.bot_name); }
+                if (result && result.status)   { updateStatus(result.status); }
+            })
+            .catch(function () {});  // silent — fallbacks stay as "AI Assistant" / "Online"
 
         // ──────────────────────────────────────────────────────────────
         // Widget initialisation
@@ -244,6 +278,7 @@
             window.__mcpChatbotInit = true;
 
             var bubble   = document.getElementById('mcp_chatbot_bubble');
+            var bubbleTooltip = document.getElementById('mcp_chatbot_bubble_tooltip');
             var chatWin  = document.getElementById('mcp_chatbot_window');
             var closeBtn = chatWin && chatWin.querySelector('.mcp-chatbot-close');
             var endSessionBtn = chatWin && chatWin.querySelector('.mcp-chatbot-end-session');
@@ -258,6 +293,16 @@
 
             sessionToken = getSessionToken();
             var isOpen   = sessionStorage.getItem(OPEN_KEY) === '1';
+
+            // ── Bubble tooltip hover ──────────────────────────────────
+            if (bubble && bubbleTooltip) {
+                bubble.addEventListener('mouseenter', function () {
+                    if (!isOpen) { bubble.classList.add('mcp-bubble-hovered'); }
+                });
+                bubble.addEventListener('mouseleave', function () {
+                    bubble.classList.remove('mcp-bubble-hovered');
+                });
+            }
 
             // ── End-session button visibility ─────────────────────────
             function setEndSessionVisible(visible) {
@@ -276,6 +321,7 @@
                 chatWin.classList.remove('d-none');
                 isOpen = true;
                 sessionStorage.setItem(OPEN_KEY, '1');
+                if (bubble) { bubble.classList.remove('mcp-bubble-hovered'); }
                 msgArea.innerHTML = '';
                 loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
                     setEndSessionVisible(hasSession);

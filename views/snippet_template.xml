@@ -18,6 +18,12 @@
                     style="width: 100%; height: 100%; object-fit: cover; display: block;"/>
             </div>
 
+            <!-- ── Bubble hover tooltip ────────────────────────── -->
+            <div id="mcp_chatbot_bubble_tooltip" class="mcp-chatbot-bubble-tooltip">
+                <span>Hi, I&#x2019;m <strong id="mcp_chatbot_tooltip_name">AI Assistant</strong>.<br/>How can I help you today?</span>
+                <div class="mcp-chatbot-bubble-tooltip-arrow"></div>
+            </div>
+
             <!-- ── Chat window ──────────────────────────────────── -->
             <div id="mcp_chatbot_window" class="mcp-chatbot-window d-none">
 

@@ -13,6 +13,14 @@ class ResConfigSettings(models.TransientModel):
         config_parameter='mcp_chatbot.bot_name',
     )
 
+    chatbot_status = fields.Selection(
+        selection=[('online', 'Online'), ('offline', 'Offline')],
+        string="Status",
+        config_parameter='mcp_chatbot.status',
+        default='online',
+        required=True,
+    )
+
     # ------------------------------------------------------------------ #
     # LLM Configuration                                                    #
     # ------------------------------------------------------------------ #
