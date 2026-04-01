@@ -107,7 +107,7 @@ async def _async_connect_to_client(server_url):
 # Async LLM + tool-call loop
 # ---------------------------------------------------------------------------
 
-async def _async_process_message(user_message, history, authenticated_partner_id=None,
+async def _async_process_message(user_message, history, authenticated_partner_id=None, session_id=None,
                                   api_key=None, base_url=None, model_name=None,
                                   system_prompt=None, max_tool_rounds=5):
     """
@@ -158,6 +158,11 @@ async def _async_process_message(user_message, history, authenticated_partner_id
         for tool_call in message.tool_calls:
             tool_name = tool_call.function.name
             args = json.loads(tool_call.function.arguments)
+
+            if tool_name == "verify_email_otp":
+                if not isinstance(args, dict):
+                    args = {}
+                args["session_id"] = session_id
 
             if tool_name in AUTH_REQUIRED_TOOLS:
                 if not isinstance(args, dict):
@@ -317,7 +322,7 @@ class MCPClientService(models.AbstractModel):
         }
 
     @api.model
-    def process_message(self, user_message, history, authenticated_partner_id=None):
+    def process_message(self, user_message, history, authenticated_partner_id=None, session_id=None):
         self.ensure_initialized()
         settings = self._get_llm_settings()
 
@@ -327,6 +332,7 @@ class MCPClientService(models.AbstractModel):
                     user_message,
                     history,
                     authenticated_partner_id,
+                    session_id,
                     api_key=settings['api_key'],
                     base_url=settings['base_url'],
                     model_name=settings['model_name'],

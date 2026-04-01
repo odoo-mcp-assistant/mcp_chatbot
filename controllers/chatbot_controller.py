@@ -135,9 +135,6 @@ class MCPChatbotController(http.Controller):
         # message get their verified partner treated as authenticated.
         effective_partner_id = partner_id or (session.partner_id.id if session.partner_id else None)
 
-        # ── Touch activity — resets the idle timeout clock ───────────────
-        session.touch_activity()
-
         Message = request.env['mcp.chatbot.message'].sudo()
 
         # ── Persist welcome as first record if this is the first message ─
@@ -269,27 +266,19 @@ class MCPChatbotController(http.Controller):
             ai_reply, new_verified_partner_id = mcp_service.process_message(
                 user_message, conversation_history,
                 authenticated_partner_id=effective_partner_id,
+                session_id = session.id
             )
         except Exception as exc:
             _logger.error('mcp_chatbot: MCP pipeline error: %s', exc)
             ai_reply, new_verified_partner_id = 'Sorry, I encountered an error. Please try again.', None
 
-        # If the OTP flow completed in this turn, persist partner_id on the session
-        if new_verified_partner_id and not session.partner_id:
-            try:
-                # Validate that the partner actually exists before writing
-                partner = request.env['res.partner'].sudo().browse(new_verified_partner_id)
-                if partner.exists():
-                    session.sudo().write({'partner_id': new_verified_partner_id})
-                    effective_partner_id = new_verified_partner_id
-                    user_id = str(new_verified_partner_id)
-                else:
-                    _logger.warning(
-                        'mcp_chatbot: OTP returned partner_id=%s but record does not exist',
-                        new_verified_partner_id,
-                    )
-            except Exception as exc:
-                _logger.error('mcp_chatbot: failed to persist verified partner: %s', exc)
+        # Session ↔ partner linkage is now handled inside the MCP server's
+        # verify_email_otp tool (same transaction as the partner create),
+        # so we only update the in-memory variables for RAG/fact extraction
+        # in the remainder of this request.
+        if new_verified_partner_id:
+            effective_partner_id = effective_partner_id or new_verified_partner_id
+            user_id = str(effective_partner_id)
 
         # ── Persist assistant reply ──────────────────────────────────────
         Message.create({
@@ -297,6 +286,15 @@ class MCPChatbotController(http.Controller):
             'role':       'assistant',
             'content':    ai_reply,
         })
+
+        # ── Touch activity — resets the idle timeout clock ───────────────
+        # Skip when verify_email_otp just wrote partner_id to this session
+        # row via JSON-RPC (already committed).  Writing last_activity here
+        # would hit a PostgreSQL serialization conflict on the same row,
+        # trigger an Odoo retry of the entire request, and re-process the
+        # message (duplicate tool calls, consumed OTP, etc.).
+        if not new_verified_partner_id:
+            session.touch_activity()
 
         # ── RAG: extract and store facts in background thread ────────────
         # Only for authenticated users — anonymous sessions are not persisted
