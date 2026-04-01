@@ -5,7 +5,7 @@ import logging
 import threading
 
 from odoo import models, api
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 import json
 
 from .base_client import BaseHTTPMCPClient
@@ -22,6 +22,36 @@ _mcp_client: BaseHTTPMCPClient = None
 _tool_schemas: list = []
 _init_lock = threading.Lock()
 _initialized = False
+
+# Cached OpenAI clients — keyed by (api_key, base_url) so they survive
+# settings changes while avoiding per-request instantiation overhead.
+_async_client_cache: dict = {}   # (api_key, base_url) → AsyncOpenAI
+_sync_client_cache: dict = {}    # (api_key, base_url) → OpenAI
+
+
+def _get_async_client(api_key, base_url) -> AsyncOpenAI:
+    key = (api_key, base_url)
+    if key not in _async_client_cache:
+        _async_client_cache[key] = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=2,
+            timeout=30.0,
+        )
+    return _async_client_cache[key]
+
+
+def _get_sync_client(api_key, base_url) -> OpenAI:
+    key = (api_key, base_url)
+    if key not in _sync_client_cache:
+        _sync_client_cache[key] = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=2,
+            timeout=30.0,
+        )
+    return _sync_client_cache[key]
+
 
 AUTH_REQUIRED_TOOLS = {
     'get_orders',
@@ -121,23 +151,18 @@ async def _async_process_message(user_message, history, authenticated_partner_id
     conversation.extend(history)
     conversation.append({"role": "user", "content": user_message})
 
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url,                                                                                  
-        max_retries=2,          # default is 2 but be explicit                                              
-        timeout=30.0,
-    )
+    client = _get_async_client(api_key, base_url)
 
     verified_partner_id = None  # Set when verify_email_otp succeeds in this call
 
     # Agentic loop — run until the model stops calling tools or we hit the cap.
     for round_number in range(max_tool_rounds):
-        # Check if this coroutine was cancelled (e.g. timeout in _run_async)                                
-        if asyncio.current_task() and asyncio.current_task().cancelled():                                   
-            _logger.info("MCP: coroutine cancelled, stopping agentic loop")                                 
+        # Check if this coroutine was cancelled (e.g. timeout in _run_async)
+        if asyncio.current_task() and asyncio.current_task().cancelled():
+            _logger.info("MCP: coroutine cancelled, stopping agentic loop")
             return "Sorry, the request timed out. Please try again.", verified_partner_id
 
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=model_name,
             messages=conversation,
             tools=_tool_schemas,
@@ -246,11 +271,11 @@ async def _async_process_message(user_message, history, authenticated_partner_id
         ),                                                                                                  
     })                                                                                                      
   
-    try:                                                                                                    
-        final_response = client.chat.completions.create(                                                    
-            model=model_name,                                                                               
-            messages=conversation,                                                                          
-            temperature=0.7,                                                                                
+    try:
+        final_response = await client.chat.completions.create(
+            model=model_name,
+            messages=conversation,
+            temperature=0.7,
         )                                                                                                   
         return final_response.choices[0].message.content or "", verified_partner_id                         
     except Exception as exc:                                                                                
@@ -355,12 +380,7 @@ class MCPClientService(models.AbstractModel):
 
         settings = self._get_llm_settings()
 
-        client = OpenAI(
-            api_key=settings['api_key'],
-            base_url=settings['base_url'],
-            max_retries=2,                                                                                  
-            timeout=30.0,
-        )
+        client = _get_sync_client(settings['api_key'], settings['base_url'])
 
         messages = [
             {
