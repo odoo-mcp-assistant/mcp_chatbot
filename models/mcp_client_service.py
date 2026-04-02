@@ -171,6 +171,9 @@ async def _async_process_message(user_message, history, authenticated_partner_id
         )
 
         message = response.choices[0].message
+        print(80*"=")
+        print(message)
+        print(80*"=")
 
         # No tool calls — model is done, return its text reply
         if not message.tool_calls:

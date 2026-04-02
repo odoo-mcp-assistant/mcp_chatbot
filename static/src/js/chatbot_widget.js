@@ -344,9 +344,29 @@
                 closeBtn.addEventListener('click', closeWindow);
             }
 
-            // ── End session (with confirmation) ──────────────────────
+            // ── End session (with confirmation + rating) ─────────────                                    
+            var selectedRating = null;                                                                      
+            var faceBtns = confirmOverlay                                                                   
+                ? confirmOverlay.querySelectorAll('.mcp-chatbot-face')                                      
+                : [];                                                                                       
+            var feedbackArea = confirmOverlay                                                               
+                ? confirmOverlay.querySelector('.mcp-chatbot-feedback')                                     
+                : null;                                                                                     
+                                                                                                            
+            faceBtns.forEach(function (btn) {                                                               
+                btn.addEventListener('click', function () {                                                 
+                    faceBtns.forEach(function (b) { b.classList.remove('selected'); });                     
+                    btn.classList.add('selected');                                                          
+                    selectedRating = btn.getAttribute('data-rating');                         
+                });                                                                                         
+            });
+            
             if (endSessionBtn && confirmOverlay) {
                 endSessionBtn.addEventListener('click', function () {
+                    // Reset state each time the dialog opens                                               
+                    selectedRating = null;                                                                  
+                    faceBtns.forEach(function (b) { b.classList.remove('selected'); });                     
+                    if (feedbackArea) { feedbackArea.value = ''; }
                     confirmOverlay.classList.remove('d-none');
                 });
 
@@ -360,6 +380,12 @@
                     if (sessionToken) {
                         payload.session_token = sessionToken;
                     }
+                    if (selectedRating !== null) {                                                          
+                        payload.rating = selectedRating;                                                    
+                    }                                                                                       
+                    if (feedbackArea && feedbackArea.value.trim()) {                                        
+                        payload.feedback = feedbackArea.value.trim();                                       
+                    }  
                     jsonRpc('/mcp_chatbot/close', payload)
                         .then(function () {
                             setEndSessionVisible(false);

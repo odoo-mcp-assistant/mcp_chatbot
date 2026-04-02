@@ -13,3 +13,6 @@ access_mcp_llm_model_admin,mcp.llm.model admin,model_mcp_llm_model,base.group_sy
 access_mcp_llm_model_user,mcp.llm.model user,model_mcp_llm_model,base.group_user,1,0,0,0
 access_mcp_chatbot_user_fact_admin,mcp.chatbot.user.fact admin,model_mcp_chatbot_user_fact,base.group_system,1,1,1,1
 access_mcp_chatbot_user_fact_user,mcp.chatbot.user.fact user,model_mcp_chatbot_user_fact,base.group_user,1,0,0,0
+access_mcp_chatbot_rating_admin,mcp.chatbot.rating admin,model_mcp_chatbot_rating,base.group_system,1,1,1,1
+access_mcp_chatbot_rating_user,mcp.chatbot.rating user,model_mcp_chatbot_rating,base.group_user,1,1,1,0
+access_mcp_chatbot_rating_public,mcp.chatbot.rating public,model_mcp_chatbot_rating,,1,1,1,0

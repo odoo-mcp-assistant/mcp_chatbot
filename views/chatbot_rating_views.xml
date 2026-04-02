@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- Kanban view                                                   -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_rating_kanban" model="ir.ui.view">
+        <field name="name">mcp.chatbot.rating.kanban</field>
+        <field name="model">mcp.chatbot.rating</field>
+        <field name="arch" type="xml">
+            <kanban create="false" sample="1">
+                <field name="rating_text"/>
+                <templates>
+                    <t t-name="card" class="row g-0">
+                        <aside class="col-3 d-flex align-items-center justify-content-center">
+                            <t t-if="record.rating_text.raw_value == 'good'">
+                                <img src="/mcp_chatbot/static/src/img/rating_5.png" alt="Good" style="width: 48px; height: 48px;"/>
+                            </t>
+                            <t t-elif="record.rating_text.raw_value == 'neutral'">
+                                <img src="/mcp_chatbot/static/src/img/rating_3.png" alt="Neutral" style="width: 48px; height: 48px;"/>
+                            </t>
+                            <t t-elif="record.rating_text.raw_value == 'bad'">
+                                <img src="/mcp_chatbot/static/src/img/rating_1.png" alt="Bad" style="width: 48px; height: 48px;"/>
+                            </t>
+                            <t t-else="">
+                                <img src="/mcp_chatbot/static/src/img/rating_0.png" alt="No Rating" style="width: 48px; height: 48px;"/>
+                            </t>
+                        </aside>
+                        <main class="col ps-2">
+                            <div t-if="record.partner_id.value" class="text-truncate mt-1">
+                                <i class="fa fa-user me-1" title="User"/>
+                                <field name="partner_id"/>
+                            </div>
+                            <div class="text-muted mt-1">
+                                <i class="fa fa-clock-o me-1" title="Date"/>
+                                <field name="create_date"/>
+                            </div>
+                            <div t-if="record.feedback.raw_value" class="text-truncate mt-1 fst-italic"
+                                 t-att-title="record.feedback.raw_value">
+                                <field name="feedback"/>
+                            </div>
+                        </main>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- List view                                                     -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_rating_list" model="ir.ui.view">
+        <field name="name">mcp.chatbot.rating.list</field>
+        <field name="model">mcp.chatbot.rating</field>
+        <field name="arch" type="xml">
+            <list string="Users Ratings" default_order="create_date desc">
+                <field name="create_date"/>
+                <field name="partner_id"/>
+                <field name="session_id"/>
+                <field name="rating_text" decoration-danger="rating_text == 'bad'"
+                                          decoration-warning="rating_text == 'neutral'"
+                                          decoration-success="rating_text == 'good'" widget="badge"/>
+                <field name="feedback"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Form view                                                     -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_rating_form" model="ir.ui.view">
+        <field name="name">mcp.chatbot.rating.form</field>
+        <field name="model">mcp.chatbot.rating</field>
+        <field name="arch" type="xml">
+            <form string="User Rating">
+                <sheet>
+                    <group>
+                        <group string="Details">
+                            <field name="partner_id"/>
+                            <field name="session_id"/>
+                        </group>
+                        <group string="Rating">
+                            <field name="rating_text" decoration-danger="rating_text == 'bad'"
+                                                      decoration-warning="rating_text == 'neutral'"
+                                                      decoration-success="rating_text == 'good'" widget="badge"/>
+                            <field name="create_date"/>
+                        </group>
+                    </group>
+                    <group string="Comment">
+                        <field name="feedback" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Search view                                                   -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_rating_search" model="ir.ui.view">
+        <field name="name">mcp.chatbot.rating.search</field>
+        <field name="model">mcp.chatbot.rating</field>
+        <field name="arch" type="xml">
+            <search string="Search Ratings">
+                <field name="partner_id" string="User"/>
+                <field name="session_id" string="Session"/>
+                <field name="feedback" string="Comment"/>
+                <filter name="filter_good"      string="Good"      domain="[('rating_text', '=', 'good')]"/>
+                <filter name="filter_neutral"   string="Neutral"   domain="[('rating_text', '=', 'neutral')]"/>
+                <filter name="filter_bad"       string="Bad"       domain="[('rating_text', '=', 'bad')]"/>
+                <separator/>
+                <filter name="filter_no_rating" string="No Rating" domain="[('rating_text', '=', 'none')]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_rating"  string="Rating" context="{'group_by': 'rating_text'}"/>
+                    <filter name="group_partner" string="User"   context="{'group_by': 'partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Action                                                        -->
+    <!-- ============================================================ -->
+    <record id="action_mcp_chatbot_ratings" model="ir.actions.act_window">
+        <field name="name">Users Ratings</field>
+        <field name="res_model">mcp.chatbot.rating</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="search_view_id" ref="view_mcp_chatbot_rating_search"/>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Menu item                                                     -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_mcp_chatbot_ratings"
+              name="Users Ratings"
+              parent="mcp_chatbot.menu_mcp_chatbot_root"
+              action="action_mcp_chatbot_ratings"
+              sequence="25"/>
+
+</odoo>

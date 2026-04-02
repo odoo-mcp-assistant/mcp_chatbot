@@ -262,6 +262,61 @@
     background: #dee2e6;
 }
 
+/* ── Rating faces ─────────────────────────────────────────────── */                                       
+.mcp-chatbot-rating-faces {                                                                                 
+    display: flex;                                                                                          
+    justify-content: center;                                                                                
+    gap: 16px;                                                                                              
+    margin-bottom: 12px;                                                                                    
+}                                                                                                           
+                                                                                                            
+.mcp-chatbot-face {                                                                                         
+    background: transparent;                                                                                
+    border: 2px solid transparent;                                                                          
+    border-radius: 50%;                                                                                     
+    width: 48px;                                                                                            
+    height: 48px;                                                                                           
+    font-size: 26px;                                                                                        
+    cursor: pointer;                                                                                        
+    display: flex;                                                                                          
+    align-items: center;                                                                                    
+    justify-content: center;                                                                                
+    transition: transform 0.15s, border-color 0.15s, background 0.15s;                                      
+    padding: 0;                                                                                             
+}                                                                                                           
+                                                                                                            
+.mcp-chatbot-face:hover {                                                                                   
+    transform: scale(1.15);                                                                                 
+}                                                                                                           
+                                                                                                            
+.mcp-face-bad  { color: #dc3545; }                                                                          
+.mcp-face-neutral { color: #f59e0b; }                                                                       
+.mcp-face-good { color: #22c55e; }                                                                          
+                                                                                                            
+.mcp-chatbot-face.selected.mcp-face-bad     { background: #fff0f0; border-color: #dc3545; }                 
+.mcp-chatbot-face.selected.mcp-face-neutral { background: #fffbeb; border-color: #f59e0b; }                 
+.mcp-chatbot-face.selected.mcp-face-good    { background: #f0fdf4; border-color: #22c55e; }                 
+                                                                                                            
+/* ── Feedback textarea ────────────────────────────────────────── */                                       
+.mcp-chatbot-feedback {                                                                                     
+    width: 100%;                                                                                            
+    border: 1px solid #d0d0d0;                                                                              
+    border-radius: 8px;                                                                                     
+    padding: 8px 10px;                                                                                      
+    font-size: 13px;                                                                                        
+    resize: none;                                                                                           
+    outline: none;                                                                                          
+    margin-bottom: 14px;                                                                                    
+    font-family: inherit;                                                                                   
+    color: #333;                                                                                            
+    transition: border-color 0.15s;                                                                         
+    box-sizing: border-box;                                                                                 
+}                                                                                                           
+                                                                                                            
+.mcp-chatbot-feedback:focus {                                                                               
+    border-color: #006699;                                                                                  
+}
+
 /* ── Message list ─────────────────────────────────────────────── */
 .mcp-chatbot-messages {
     flex: 1;

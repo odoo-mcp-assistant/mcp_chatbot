@@ -31,6 +31,7 @@
         'views/configuration_views.xml',
         'views/res_partner_views.xml',
         'views/res_partner_inherit_views.xml',
+        'views/chatbot_rating_views.xml',
         'views/res_config_settings_views.xml',
     ],
     'assets': {

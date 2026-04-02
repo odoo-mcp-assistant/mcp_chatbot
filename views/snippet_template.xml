@@ -51,10 +51,22 @@
                 <!-- End session confirmation overlay -->
                 <div class="mcp-chatbot-confirm-overlay d-none">
                     <div class="mcp-chatbot-confirm-dialog">
-                        <p>Are you sure you want to end this session?</p>
+                        <p>How was your experience?</p>                                                      
+                        <div class="mcp-chatbot-rating-faces">                                               
+                            <button class="mcp-chatbot-face mcp-face-bad" data-rating="bad" title="Bad">
+                                <i class="fa fa-frown-o"/>
+                            </button>
+                            <button class="mcp-chatbot-face mcp-face-neutral" data-rating="neutral" title="Neutral">
+                                <i class="fa fa-meh-o"/>
+                            </button>
+                            <button class="mcp-chatbot-face mcp-face-good" data-rating="good" title="Good">    
+                                <i class="fa fa-smile-o"/>                                                   
+                            </button>                                                                        
+                        </div>                                                                               
+                        <textarea class="mcp-chatbot-feedback" placeholder="Leave a comment (optional)..." rows="3"/>
                         <div class="mcp-chatbot-confirm-actions">
-                            <button class="mcp-chatbot-confirm-yes">Yes</button>
-                            <button class="mcp-chatbot-confirm-no">No</button>
+                            <button class="mcp-chatbot-confirm-yes">End Session</button>                     
+                            <button class="mcp-chatbot-confirm-no">Cancel</button>
                         </div>
                     </div>
                 </div>

@@ -261,6 +261,8 @@ class MCPChatbotController(http.Controller):
             except Exception as exc:
                 _logger.error('mcp_chatbot: memory retrieval failed: %s', exc)
 
+        print(f"\n{'*'*80}\n[CONVERSATION HISTORY] {len(conversation_history)} messages:\n" + "\n".join(f"  [{m['role'].upper()}] {m['content'][:150]}{'...' if len(m['content'])>150 else ''}" for m in conversation_history) + f"\n[USER MSG] {user_message}\n{'*'*80}\n")
+
         # ── Call MCP pipeline ────────────────────────────────────────────
         try:
             ai_reply, new_verified_partner_id = mcp_service.process_message(
@@ -470,7 +472,7 @@ class MCPChatbotController(http.Controller):
         website=True,
         csrf=False,
     )
-    def close_session(self, session_token: str = None, **kwargs):
+    def close_session(self, session_token: str = None, rating: str = None, feedback: str = None, **kwargs):
         """Close a session when the visitor closes the widget."""
         partner_id = None
         if not request.env.user._is_public():
@@ -492,6 +494,20 @@ class MCPChatbotController(http.Controller):
             session = None
 
         if session:
+            _logger.info('mcp_chatbot close: rating=%r, feedback=%r', rating, feedback)
+            if rating and rating in ('bad', 'neutral', 'good'):
+                try:
+                    vals = {
+                        'session_id': session.id,
+                        'rating_text': rating,
+                        'feedback': feedback or '',
+                    }
+                    if session.partner_id:
+                        vals['partner_id'] = session.partner_id.id
+                    request.env['mcp.chatbot.rating'].sudo().create(vals)
+                except Exception as exc:
+                    _logger.error('mcp_chatbot: failed to save rating: %s', exc)
+
             session.action_close()
 
         return {'status': 'closed'}
