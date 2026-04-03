@@ -102,6 +102,18 @@ class ChatbotSession(models.Model):
         compute='_compute_message_count',
     )
 
+    rating_ids = fields.One2many(
+        'mcp.chatbot.rating',
+        'session_id'
+    )
+
+    session_rating_text = fields.Selection([
+        ('none', 'No Rating'),
+        ('bad', 'Bad'),
+        ('neutral', 'Neutral'),
+        ('good', 'Good'),
+    ], default='none', string="Rating", compute="_compute_session_rating_text", store=True)
+
     # ------------------------------------------------------------------ #
     # Computed fields                                                      #
     # ------------------------------------------------------------------ #
@@ -121,6 +133,13 @@ class ChatbotSession(models.Model):
     def _compute_message_count(self):
         for rec in self:
             rec.message_count = len(rec.message_ids)
+    
+    @api.depends('rating_ids.rating_text')
+    def _compute_session_rating_text(self):
+        for rec in self:
+            rec.session_rating_text = 'none'
+            if rec.rating_ids:
+                rec.session_rating_text = rec.rating_ids[0].rating_text  
 
     # ------------------------------------------------------------------ #
     # Business logic                                                        #

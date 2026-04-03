@@ -16,6 +16,9 @@
                 <field name="last_activity"/>
                 <field name="state"/>
                 <field name="create_date" string="Started"/>
+                <field name="session_rating_text" decoration-danger="session_rating_text == 'bad'"
+                                                  decoration-warning="session_rating_text == 'neutral'"
+                                                  decoration-success="session_rating_text == 'good'" widget="badge"/>
             </list>
         </field>
     </record>
@@ -50,6 +53,9 @@
                             <field name="last_activity"/>
                             <field name="last_summarized_count"/>
                             <field name="create_date" string="Started"/>
+                            <field name="session_rating_text" decoration-danger="session_rating_text == 'bad'"
+                                                              decoration-warning="session_rating_text == 'neutral'"
+                                                              decoration-success="session_rating_text == 'good'" widget="badge"/>
                         </group>
                     </group>
                     <notebook>

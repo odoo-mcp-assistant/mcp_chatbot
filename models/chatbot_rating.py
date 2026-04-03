@@ -6,12 +6,18 @@ class ChatbotRating(models.Model):
     _name = 'mcp.chatbot.rating'
     _description = 'Chatbot Session Rating'
 
-
+    _sql_constraints = [
+        ('unique_session', 'UNIQUE(session_id)', 'Only one rating per session is allowed.'),
+    ]
 
     partner_id = fields.Many2one('res.partner', string="User")
-    session_id = fields.Many2one('mcp.chatbot.session', string="Session")
+    session_id = fields.Many2one(
+        'mcp.chatbot.session',
+        string="Session",
+        domain="[('rating_ids', '=', False)]"
+    )
     rating_text = fields.Selection([
-        ('none', 'No Rating Yet'),
+        ('none', 'No Rating'),
         ('bad', 'Bad'),
         ('neutral', 'Neutral'),
         ('good', 'Good'),
