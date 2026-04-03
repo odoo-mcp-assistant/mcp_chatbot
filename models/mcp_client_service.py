@@ -177,7 +177,8 @@ async def _async_process_message(user_message, history, authenticated_partner_id
 
         # No tool calls — model is done, return its text reply
         if not message.tool_calls:
-            return message.content or "", verified_partner_id
+            reply = message.content or getattr(message, 'reasoning', '') or ""
+            return reply, verified_partner_id
 
         # Append the assistant turn with its tool call requests
         conversation.append(message)
@@ -280,7 +281,9 @@ async def _async_process_message(user_message, history, authenticated_partner_id
             messages=conversation,
             temperature=0.7,
         )                                                                                                   
-        return final_response.choices[0].message.content or "", verified_partner_id                         
+        final_msg = final_response.choices[0].message
+        reply = final_msg.content or getattr(final_msg, 'reasoning', '') or ""
+        return reply, verified_partner_id                         
     except Exception as exc:                                                                                
         _logger.warning("MCP: fallback completion also failed: %s", exc)                                    
         return (                                                                                            
