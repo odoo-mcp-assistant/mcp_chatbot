@@ -71,6 +71,16 @@
                     <!-- RAG -->
                     <block title="RAG"
                            name="mcp_chatbot_rag">
+                        <setting string="Fact Extraction API Key"
+                                 help="API key used exclusively for the fact extraction LLM. Falls back to the main API key if left empty."
+                                 id="chatbot_fact_extraction_api_key_setting">
+                            <field name="chatbot_fact_extraction_api_key" style="width: 100%;"/>
+                        </setting>
+                        <setting string="Fact Extraction Base URL"
+                                 help="Base URL for the fact extraction LLM API. Falls back to the main Base URL if left empty."
+                                 id="chatbot_fact_extraction_base_url_setting">
+                            <field name="chatbot_fact_extraction_base_url" style="width: 100%;"/>
+                        </setting>
                         <setting id="chatbot_rag_system_prompt_setting"
                                  colspan="2">
                             <div class="col-12">

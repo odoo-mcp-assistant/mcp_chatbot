@@ -60,6 +60,16 @@ class ResConfigSettings(models.TransientModel):
         string="Fact Extraction Model",
     )
 
+    chatbot_fact_extraction_api_key = fields.Char(
+        string="Fact Extraction API Key",
+        config_parameter='mcp_chatbot.fact_extraction_api_key',
+    )
+
+    chatbot_fact_extraction_base_url = fields.Char(
+        string="Fact Extraction Base URL",
+        config_parameter='mcp_chatbot.fact_extraction_base_url',
+    )
+
     chatbot_rag_system_prompt = fields.Char(
         string="RAG System Prompt",
         config_parameter='mcp_chatbot.rag_system_prompt',

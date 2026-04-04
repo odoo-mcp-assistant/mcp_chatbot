@@ -304,8 +304,12 @@ class MCPChatbotController(http.Controller):
             try:
                 # Read API key and fact extraction model from settings
                 param = request.env['ir.config_parameter'].sudo()
-                api_key = param.get_param('mcp_chatbot.api_key', '')
-                base_url = param.get_param('mcp_chatbot.base_url', '')
+                api_key = (
+                    param.get_param('mcp_chatbot.fact_extraction_api_key', '')                
+                )
+                base_url = (
+                    param.get_param('mcp_chatbot.fact_extraction_base_url', '')
+                )
                 fact_model_name = ''
                 fact_model_id = param.get_param('mcp_chatbot.fact_extraction_model_id')
                 if fact_model_id:
