@@ -43,7 +43,7 @@
                             <i class="fa fa-power-off"/>
                         </button>
                         <button class="mcp-chatbot-close" title="Minimize">
-                            <i class="fa fa-times"/>
+                            <i class="fa fa-minus"/>
                         </button>
                     </div>
                 </div>
@@ -78,14 +78,16 @@
 
                 <!-- Input area -->
                 <div class="mcp-chatbot-input-area">
-                    <input id="mcp_chatbot_input"
-                           type="text"
-                           class="mcp-chatbot-input"
-                           placeholder="Type your message..."
-                           autocomplete="off"/>
-                    <button id="mcp_chatbot_send" class="mcp-chatbot-send" title="Send">
-                        <i class="fa fa-paper-plane"/>
-                    </button>
+                    <div class="mcp-chatbot-input-wrapper">
+                        <input id="mcp_chatbot_input"
+                               type="text"
+                               class="mcp-chatbot-input"
+                               placeholder="Type your message..."
+                               autocomplete="off"/>
+                        <button id="mcp_chatbot_send" class="mcp-chatbot-send" title="Send">
+                            <i class="fa fa-paper-plane"/>
+                        </button>
+                    </div>
                 </div>
 
             </div>

@@ -230,6 +230,7 @@
             var statusEl  = document.querySelector('.mcp-chatbot-status');
             var inputEl   = document.getElementById('mcp_chatbot_input');
             var sendEl    = document.getElementById('mcp_chatbot_send');
+            var wrapperEl = document.querySelector('.mcp-chatbot-input-wrapper');
 
             if (status === 'offline') {
                 if (statusEl) {
@@ -242,6 +243,7 @@
                     inputEl.placeholder = 'Chat is currently unavailable.';
                 }
                 if (sendEl)  { sendEl.disabled = true; }
+                if (wrapperEl) { wrapperEl.classList.add('disabled'); }
             } else {
                 if (statusEl) {
                     statusEl.textContent = 'Online';
@@ -253,6 +255,7 @@
                     inputEl.placeholder = 'Type your message...';
                 }
                 if (sendEl)  { sendEl.disabled = false; }
+                if (wrapperEl) { wrapperEl.classList.remove('disabled'); }
             }
         }
 
@@ -319,6 +322,7 @@
             // ── Open / close ──────────────────────────────────────────
             function openWindow() {
                 chatWin.classList.remove('d-none');
+                bubble.classList.add('d-none');
                 isOpen = true;
                 sessionStorage.setItem(OPEN_KEY, '1');
                 if (bubble) { bubble.classList.remove('mcp-bubble-hovered'); }
@@ -331,6 +335,7 @@
 
             function closeWindow() {
                 chatWin.classList.add('d-none');
+                bubble.classList.remove('d-none');
                 isOpen = false;
                 sessionStorage.setItem(OPEN_KEY, '0');
                 msgArea.innerHTML = '';   // clear DOM — backend is source of truth
@@ -392,6 +397,7 @@
                             clearSessionToken();
                             sessionToken = getSessionToken();
                             chatWin.classList.add('d-none');
+                            bubble.classList.remove('d-none');
                             isOpen = false;
                             sessionStorage.setItem(OPEN_KEY, '0');
                             msgArea.innerHTML = '';
