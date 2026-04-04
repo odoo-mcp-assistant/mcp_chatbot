@@ -44,35 +44,47 @@ Present multiple items as clear sentences on separate lines.
 
 6- RAG System Prompt
 Extract durable facts about the USER from the conversation exchange below.
-                                                                                                                                                              
-  SOURCE RULE:
-  Extract only from the USER message. The ASSISTANT message is context only — never extract from it.                                                          
-                                                                                                                                                              
-  EXTRACT:
-  - Location or delivery preferences (category: location)                                                                                                     
-  - Language or communication preferences (category: language)                                                                                                
-  - Formatting preferences (category: formatting)
-  - Role, company, or profession (category: role)                                                                                                             
-  - Product or brand preferences (category: preference)                                                                                                       
-  - Budget tendencies (category: preference)
-  - Explicit memory requests, e.g. "remember that I..." (category: explicit)                                                                                  
-  - Recurring interests or topics (category: topic)
-                                                                                                                                                              
-  DO NOT EXTRACT:
 
-Questions or transient requests from this turn
-Specific prices, quantities, order IDs, or dates
-Anything that becomes outdated quickly
-Emotional states, feelings, or personal situations unrelated to shopping or the platform
-Personal life context (health, work stress, studies, relationships, etc.) unless it directly affects delivery or purchasing behaviour
-Any fact that would not help the assistant serve the user better as a customer
-  OUTPUT:                                                                                                                                                     
-  Return ONLY valid compact JSON, no markdown, no explanation.
-  If facts found: {"facts": [{"text": "User prefers delivery to Tunis", "category": "location"}]}
-  If none: {"facts": []}                                                                                                                                      
-  
-  CATEGORIES: location | language | formatting | role | preference | explicit | topic
-  
+SOURCE RULE:
+Extract only from the USER message. The ASSISTANT message is context only — never extract from it.
+
+EXTRACT:
+- Location, city, neighborhood, or delivery address preferences (category: location)
+- Language or communication preferences (category: language)
+- Formatting or interaction style preferences (category: formatting)
+- Role, company, profession, or household context e.g. "I have 3 kids", "I'm a chef" (category: role)
+- Brand affinities or aversions e.g. "I love Samsung", "I don't trust Chinese brands" (category: brand_affinity)
+- Product category interests e.g. "I'm into smart home", "I cook a lot" (category: interest)
+- Budget tendencies or price sensitivity e.g. "I want the cheapest", "money is not an issue" (category: budget)
+- Purchase motivation or use case e.g. "for my new apartment", "for my restaurant" (category: use_case)
+- Decision factors e.g. "energy efficiency matters most", "I care about warranty" (category: decision_factor)
+- Channel or shopping preferences e.g. "I prefer cash on delivery", "I hate waiting" (category: shopping_pref)
+- Household or lifestyle signals e.g. "we are a family of 5", "I live alone" (category: lifestyle)
+- Timing patterns e.g. "I always buy during sales", "I need it for Ramadan" (category: timing)
+- Past ownership or experience e.g. "I had a Beko fridge before", "my LG broke after 2 years" (category: experience)
+- Explicit memory requests e.g. "remember that I..." (category: explicit)
+
+DO NOT EXTRACT:
+- Questions or transient requests from this turn
+- Specific prices, quantities, order IDs, tracking numbers, or exact dates
+- Anything that becomes outdated within days
+- Emotional states unrelated to purchasing behavior
+- Facts already implied by the assistant message (avoid duplicating known context)
+- Greetings, thank yous, or conversational filler
+- Any fact that would not help personalize future recommendations or service
+
+INFERENCE RULE:
+If the user message strongly implies a durable fact without stating it explicitly, you MAY extract it with "[inferred]" prefix.
+Example: User says "which washing machine handles 9kg?" → {"text": "[inferred] User likely has a large household", "category": "lifestyle"}
+
+OUTPUT:
+Return ONLY valid compact JSON, no markdown, no explanation.
+If facts found: {"facts": [{"text": "User prefers Samsung", "category": "brand_affinity", "confidence": "high"}]}
+If none: {"facts": []}
+
+CATEGORIES: location | language | formatting | role | brand_affinity | interest | budget | use_case | decision_factor | shopping_pref | lifestyle | timing | experience | explicit
+
+CONFIDENCE: high (explicitly stated) | medium (clearly implied) | low (weakly inferred)  
 7- Fact Extraction Model
 openai/gpt-oss-120b
 

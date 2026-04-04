@@ -319,6 +319,13 @@ class MCPChatbotController(http.Controller):
                 
                 rag_system_prompt = param.get_param('mcp_chatbot.rag_system_prompt', '')
 
+                # Build 4-message context window: [prev_user, prev_assistant, current_user, current_assistant]
+                chat_turns = [m for m in prior_history if m.get('role') in ('user', 'assistant')]
+                context_window = chat_turns[-2:] + [
+                    {'role': 'user',      'content': user_message},
+                    {'role': 'assistant', 'content': ai_reply},
+                ]
+
                 fact_extractor = _get_fact_extractor()
                 memory_service = _get_memory_service()
                 fact_extractor.extract_facts_async(
@@ -332,6 +339,7 @@ class MCPChatbotController(http.Controller):
                     memory_service_module=memory_service,
                     odoo_registry=request.env.registry,
                     odoo_db=request.env.cr.dbname,
+                    context_window=context_window,
                 )
                 _logger.info('mcp_chatbot: fact extraction triggered for user %s', user_id)
             except Exception as exc:

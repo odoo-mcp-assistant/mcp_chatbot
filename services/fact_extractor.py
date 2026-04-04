@@ -20,24 +20,29 @@ def extract_facts_async(api_key: str, base_url: str, extraction_model: str,
                         rag_system_prompt: str,
                         user_id: str, user_message: str, bot_response: str,
                         memory_service_module,
-                        odoo_registry=None, odoo_db: str = None):
+                        odoo_registry=None, odoo_db: str = None,
+                        context_window: list = None):
     """
     Kick off fact extraction in a background daemon thread.
     Returns immediately — does not block the chat response.
 
     Args:
-        odoo_registry: The Odoo registry object (passed from the controller as
-                       `request.env.registry`). Used to open a fresh cursor in
-                       the background thread so we can write to the Odoo model.
-        odoo_db:       The current database name (`request.env.cr.dbname`).
-                       Required alongside odoo_registry.
+        context_window: Up to 4 dicts [{role, content}] representing the last
+                        two full turns: [prev_user, prev_assistant, current_user,
+                        current_assistant]. Used to give the extractor full
+                        context so short answers like "Samsung" are understood.
+        odoo_registry:  The Odoo registry object (passed from the controller as
+                        `request.env.registry`). Used to open a fresh cursor in
+                        the background thread so we can write to the Odoo model.
+        odoo_db:        The current database name (`request.env.cr.dbname`).
+                        Required alongside odoo_registry.
     """
     t = threading.Thread(
         target=_extract_and_store,
         args=(
             api_key, base_url, extraction_model, rag_system_prompt,
-            user_id, user_message, bot_response,
-            memory_service_module, odoo_registry, odoo_db,
+            user_id, memory_service_module, odoo_registry, odoo_db,
+            context_window or [],
         ),
         daemon=True,
         name=f"fact_extractor_{user_id}",
@@ -46,12 +51,12 @@ def extract_facts_async(api_key: str, base_url: str, extraction_model: str,
 
 
 def _extract_and_store(api_key, base_url, extraction_model, rag_system_prompt,
-                       user_id, user_message, bot_response,
-                       memory_service_module, odoo_registry, odoo_db):
+                       user_id, memory_service_module, odoo_registry, odoo_db,
+                       context_window):
     try:
         _logger.info("[FactExtractor] Thread started for user %s", user_id)
         facts = _call_llm(api_key, base_url, extraction_model, rag_system_prompt,
-                          user_message, bot_response)
+                          context_window)
         _logger.info("[FactExtractor] LLM returned %d facts", len(facts) if facts else 0)
 
         if not facts:
@@ -141,14 +146,24 @@ def _write_to_odoo(registry, db: str, user_id: str, fact_text: str,
 
 def _call_llm(api_key: str, base_url: str, extraction_model: str,
               rag_system_prompt: str,
-              user_message: str, bot_response: str) -> list[dict]:
+              context_window: list) -> list[dict]:
     raw = ""
     try:
         client = OpenAI(api_key=api_key, base_url=base_url)
-        exchange = (
-            f"USER MESSAGE (extract facts from this):\n{user_message}\n\n"
-            f"ASSISTANT RESPONSE (context only — do not extract from this):\n{bot_response}"
-        )
+        label = {"user": "USER", "assistant": "ASSISTANT"}
+        lines = []
+        for i, msg in enumerate(context_window):
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            is_last_user = (role == "user" and i == len(context_window) - 2)
+            is_last_assistant = (role == "assistant" and i == len(context_window) - 1)
+            if is_last_user:
+                lines.append(f"USER (extract facts from this turn):\n{content}")
+            elif is_last_assistant:
+                lines.append(f"ASSISTANT (current response — context only):\n{content}")
+            else:
+                lines.append(f"{label.get(role, role.upper())} (context only):\n{content}")
+        exchange = "\n\n".join(lines)
         response = client.chat.completions.create(
             model=extraction_model,
             messages=[
