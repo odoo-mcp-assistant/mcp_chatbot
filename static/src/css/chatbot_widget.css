@@ -428,7 +428,7 @@
 .mcp-chatbot-input {
     flex: 1;
     border: none;
-    padding: 6px 0;
+    padding: 6px 8px 6px 0;
     font-size: 14px;
     outline: none;
     background: transparent;
