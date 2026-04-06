@@ -396,6 +396,9 @@ class MCPClientService(models.AbstractModel):
                     "Given a chat history, produce a concise summary that preserves "
                     "all important context: key questions asked, decisions made, "
                     "products or data mentioned, and the current state of the conversation. "
+                    "CRITICAL: Always preserve exact product names, order references "
+                    "(e.g. S00108), email addresses, prices, and any technical identifiers "
+                    "exactly as they appear — never paraphrase or rename them. "
                     "Be brief but complete."
                 ),
             },
