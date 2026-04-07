@@ -380,11 +380,32 @@ class MCPClientService(models.AbstractModel):
             return f"Sorry, I encountered an error: {exc}", None
 
     @api.model
+    def _get_summary_settings(self):
+        """Read summary-specific LLM settings, falling back to main settings."""
+        param = self.env['ir.config_parameter'].sudo()
+        LlmModel = self.env['mcp.llm.model']
+        main = self._get_llm_settings()
+
+        api_key  = param.get_param('mcp_chatbot.summary_api_key', '') or main['api_key']
+        base_url = param.get_param('mcp_chatbot.summary_base_url', '') or main['base_url']
+
+        model_name = ''
+        summary_model_id = param.get_param('mcp_chatbot.summary_model_id')
+        if summary_model_id:
+            record = LlmModel.browse(int(summary_model_id))
+            if record.exists():
+                model_name = record.name
+        if not model_name:
+            model_name = main['model_name']
+
+        return {'api_key': api_key, 'base_url': base_url, 'model_name': model_name}
+
+    @api.model
     def summarize_history(self, history):
         if not history:
             return ""
 
-        settings = self._get_llm_settings()
+        settings = self._get_summary_settings()
 
         client = _get_sync_client(settings['api_key'], settings['base_url'])
 

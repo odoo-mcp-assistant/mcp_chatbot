@@ -76,6 +76,25 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ------------------------------------------------------------------ #
+    # Summary                                                              #
+    # ------------------------------------------------------------------ #
+
+    chatbot_summary_model_id = fields.Many2one(
+        comodel_name='mcp.llm.model',
+        string="Summary Model",
+    )
+
+    chatbot_summary_api_key = fields.Char(
+        string="Summary API Key",
+        config_parameter='mcp_chatbot.summary_api_key',
+    )
+
+    chatbot_summary_base_url = fields.Char(
+        string="Summary Base URL",
+        config_parameter='mcp_chatbot.summary_base_url',
+    )
+
+    # ------------------------------------------------------------------ #
     # MCP Server                                                           #
     # ------------------------------------------------------------------ #
 
@@ -123,6 +142,13 @@ class ResConfigSettings(models.TransientModel):
         else:
             res['chatbot_fact_extraction_model_id'] = False
 
+        # Summary model
+        summary_model_id = param.get_param('mcp_chatbot.summary_model_id')
+        if summary_model_id and LlmModel.browse(int(summary_model_id)).exists():
+            res['chatbot_summary_model_id'] = int(summary_model_id)
+        else:
+            res['chatbot_summary_model_id'] = False
+
         return res
 
     def set_values(self):
@@ -135,4 +161,8 @@ class ResConfigSettings(models.TransientModel):
         param.set_param(
             'mcp_chatbot.fact_extraction_model_id',
             self.chatbot_fact_extraction_model_id.id or False,
+        )
+        param.set_param(
+            'mcp_chatbot.summary_model_id',
+            self.chatbot_summary_model_id.id or False,
         )
