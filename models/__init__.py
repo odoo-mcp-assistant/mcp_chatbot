@@ -9,3 +9,4 @@ from . import inherit_res_partner
 from . import inherit_res_users
 from . import res_config_settings
 from . import chatbot_rating
+from . import product_publisher

@@ -7,6 +7,7 @@ https://integrate.api.nvidia.com/v1
 
 3- LLM Model
 openai/gpt-oss-120b
+moonshotai/kimi-k2.5
 
 4- System prompt
 You are an AI assistant for a Tunisian e-commerce platform specialising in home appliances and electronics.

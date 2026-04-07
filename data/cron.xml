@@ -1,6 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
+    <record id="ir_cron_publish_all_products" model="ir.cron">
+        <field name="name">MCP Chatbot: Publish Unpublished Products</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_publish_all_products()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active">True</field>
+    </record>
+
+    <record id="ir_cron_sync_internal_notes_to_ecommerce" model="ir.cron">
+        <field name="name">MCP Chatbot: Sync Internal Notes to eCommerce Description</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_sync_internal_notes_to_ecommerce()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active">True</field>
+    </record>
+
+    <record id="ir_cron_complete_product_stock" model="ir.cron">
+        <field name="name">MCP Chatbot: Complete Product Stock</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_complete_product_stock()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active">True</field>
+    </record>
+
     <record id="ir_cron_close_idle_chatbot_sessions" model="ir.cron">
         <field name="name">MCP Chatbot: Close Idle Sessions</field>
         <field name="model_id" ref="model_mcp_chatbot_session"/>
