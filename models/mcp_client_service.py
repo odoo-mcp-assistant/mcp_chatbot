@@ -56,6 +56,7 @@ def _get_sync_client(api_key, base_url) -> OpenAI:
 AUTH_REQUIRED_TOOLS = {
     'get_orders',
     'create_order',
+    'add_to_cart',
     'confirm_order',
     'cancel_order',
     'get_order_details',
