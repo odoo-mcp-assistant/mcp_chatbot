@@ -36,7 +36,7 @@ def _get_async_client(api_key, base_url) -> AsyncOpenAI:
             api_key=api_key,
             base_url=base_url,
             max_retries=2,
-            timeout=90.0,
+            timeout=118.0,
         )
     return _async_client_cache[key]
 
@@ -48,7 +48,7 @@ def _get_sync_client(api_key, base_url) -> OpenAI:
             api_key=api_key,
             base_url=base_url,
             max_retries=2,
-            timeout=60.0,
+            timeout=118.0,
         )
     return _sync_client_cache[key]
 
@@ -92,7 +92,7 @@ def _get_or_create_event_loop():
     return _event_loop
 
 
-def _run_async(coro, timeout=60):
+def _run_async(coro, timeout=118):
     loop = _get_or_create_event_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     try:                                                                                                     
@@ -177,7 +177,7 @@ async def _async_process_message(user_message, history, authenticated_partner_id
 
         # No tool calls — model is done, return its text reply
         if not message.tool_calls:
-            reply = message.content or getattr(message, 'reasoning', '') or ""
+            reply = message.content or getattr(message, 'reasoning_content', '') or getattr(message, 'reasoning', '') or ""
             return reply, verified_partner_id
 
         # Append the assistant turn with its tool call requests
@@ -282,7 +282,7 @@ async def _async_process_message(user_message, history, authenticated_partner_id
             temperature=0.7,
         )                                                                                                   
         final_msg = final_response.choices[0].message
-        reply = final_msg.content or getattr(final_msg, 'reasoning', '') or ""
+        reply = final_msg.content or getattr(final_msg, 'reasoning_content', '') or getattr(final_msg, 'reasoning', '') or ""
         return reply, verified_partner_id                         
     except Exception as exc:                                                                                
         _logger.warning("MCP: fallback completion also failed: %s", exc)                                    
