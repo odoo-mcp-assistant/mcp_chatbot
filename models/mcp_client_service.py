@@ -36,7 +36,7 @@ def _get_async_client(api_key, base_url) -> AsyncOpenAI:
             api_key=api_key,
             base_url=base_url,
             max_retries=2,
-            timeout=60.0,
+            timeout=90.0,
         )
     return _async_client_cache[key]
 
