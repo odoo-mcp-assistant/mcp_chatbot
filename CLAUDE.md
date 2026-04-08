@@ -43,6 +43,7 @@ All runtime settings are stored in `ir.config_parameter` with the `mcp_chatbot.*
 | `mcp_chatbot.rag_system_prompt` | System prompt for fact extraction LLM |
 | `mcp_chatbot.max_tool_rounds` | Agentic loop cap (default 5) |
 | `mcp_chatbot.summary_token_budget` | Approx. token count for the unsummarized tail before background summarisation kicks in (default 3000) |
+| `mcp_chatbot.session_recall_top_k` | Max number of past message pairs surfaced by semantic session recall per turn (default 3) |
 | `mcp_chatbot.idle_timeout` | Minutes before idle session is closed (default 30) |
 
 ## Architecture
@@ -55,7 +56,7 @@ Browser widget (chatbot_widget.js)
   → ChatbotController.receive_message()
       1. Resolve session (partner_id or session_token)
       2. Build conversation_history:
-           [RAG memories] + [identity context] + [rolling summary] + [recent messages]
+           [RAG memories] + [recalled session pairs] + [identity context] + [rolling summary] + [recent messages]
       3. mcp.client.service.process_message()
            → _async_process_message() in background event loop
                → OpenAI chat completion with MCP tool schemas
@@ -80,6 +81,8 @@ Browser widget (chatbot_widget.js)
 - **`services/fact_extractor.py`** — daemon thread per message; calls LLM to extract structured facts (JSON with `facts[].text` and `facts[].category`), then writes to ChromaDB via `memory_service` and mirrors into `mcp.chatbot.user.fact` using a fresh DB cursor (the original request cursor is already committed at this point).
 
 - **`services/summarizer.py`** — daemon thread per summarisation round; called from `chatbot_controller` once the unsummarized tail exceeds `mcp_chatbot.summary_token_budget`. Owns the structured summary schema (see "Structured summary" below), the LLM call, JSON validation/cap enforcement, and the write-back to `mcp.chatbot.session.history_summary` via a fresh DB cursor. Uses a per-worker in-flight guard (`_in_flight_sessions`) so a fast follow-up message can't kick off a duplicate thread for the same session. Also exposes `render_summary_for_prompt(stored)` — the controller calls this on every turn to turn the JSON-encoded summary back into a clean prose block before injecting it into the LLM context.
+
+- **`services/session_recall.py`** — per-session semantic recall over (user, assistant) pairs. Each turn is embedded into a ChromaDB collection named `session_recall_{session_id}` via a daemon thread (`index_turn_async`). On every new turn, `chatbot_controller` calls `retrieve_relevant_turns(session_id, query_text, max_turn_index, top_k)` synchronously and injects the matches as a `system` message before the main LLM call. `max_turn_index` is set to `session.last_summarized_count` so the retrieval filter (`where={"turn_index": {"$lt": ...}}`) only returns pairs that have already been compressed away by summarisation — pairs still in the unsummarized tail are never re-injected. The collection is dropped in `mcp.chatbot.session.action_close()` via `delete_session_collection(session_id)`, so closed sessions leave no Chroma trace. Reuses the existing `embedding_service` singleton.
 
 ### Structured summary (`history_summary`)
 

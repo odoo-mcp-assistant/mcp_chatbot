@@ -71,6 +71,40 @@ def _get_memory_service():
     return sys.modules['mcp_chatbot_memory_service']
 
 
+def _get_session_recall():
+    """
+    Loader for services/session_recall.py. Mirrors _get_memory_service
+    because session_recall also `import embedding_service` directly,
+    so the services/ dir must be on sys.path and embedding_service must
+    be loaded under that exact module name first.
+    """
+    import sys, importlib.util
+    services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
+
+    if services_dir not in sys.path:
+        sys.path.insert(0, services_dir)
+
+    if 'embedding_service' not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            'embedding_service',
+            os.path.join(services_dir, 'embedding_service.py')
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['embedding_service'] = mod
+        spec.loader.exec_module(mod)
+
+    if 'mcp_chatbot_session_recall' not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            'mcp_chatbot_session_recall',
+            os.path.join(services_dir, 'session_recall.py')
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['mcp_chatbot_session_recall'] = mod
+        spec.loader.exec_module(mod)
+
+    return sys.modules['mcp_chatbot_session_recall']
+
+
 def _estimate_tokens(messages: list) -> int:
     """
     Heuristic token count for a list of {role, content} dicts.
@@ -318,6 +352,53 @@ class MCPChatbotController(http.Controller):
             }
         ] + conversation_history
 
+        # ── Session recall: semantic search over older turns ─────────────
+        # The structured summary is bounded — fine-grained detail from
+        # message N gets compressed away after a couple of summarisation
+        # rounds. Session recall plugs that gap by embedding every
+        # (user, assistant) pair into a per-session ChromaDB collection
+        # and pulling back the top-K matches whenever the user asks
+        # something whose answer might live in older detail.
+        #
+        # Gating rules:
+        #   * Only if at least one summary round has happened
+        #     (last_summarized_count > 0). With nothing compacted yet,
+        #     all messages are still visible in unsummarized_messages and
+        #     semantic recall would just duplicate them.
+        #   * The retrieval call itself filters to turns whose
+        #     turn_index < last_summarized_count, so even if the gate
+        #     loosens later, we never re-inject pairs from the
+        #     unsummarized tail.
+        #
+        # Top-K is configurable via mcp_chatbot.session_recall_top_k
+        # (default 3). Anonymous sessions get this too — the per-session
+        # collection is dropped on action_close, so no privacy concern.
+        if session.last_summarized_count > 0:
+            try:
+                top_k = int(self._get_param('mcp_chatbot.session_recall_top_k', 3))
+                session_recall = _get_session_recall()
+                recalled_pairs = session_recall.retrieve_relevant_turns(
+                    session_id=session.id,
+                    query_text=user_message,
+                    max_turn_index=session.last_summarized_count,
+                    top_k=top_k,
+                )
+                if recalled_pairs:
+                    recall_context = (
+                        "POSSIBLY RELEVANT EARLIER EXCHANGES "
+                        "(recovered via semantic search over this session):\n"
+                    )
+                    recall_context += "\n---\n".join(recalled_pairs)
+                    conversation_history = [
+                        {'role': 'system', 'content': recall_context}
+                    ] + conversation_history
+                    _logger.info(
+                        'mcp_chatbot: injected %d recalled pairs for session %s',
+                        len(recalled_pairs), session.id,
+                    )
+            except Exception as exc:
+                _logger.error('mcp_chatbot: session recall retrieval failed: %s', exc)
+
         # ── RAG: retrieve and inject long-term memories ──────────────────
         user_id = str(effective_partner_id) if effective_partner_id else None
 
@@ -365,6 +446,24 @@ class MCPChatbotController(http.Controller):
             'role':       'assistant',
             'content':    ai_reply,
         })
+
+        # ── Session recall: index this turn pair in the background ───────
+        # We pass `prior_count` as the turn_index so retrieval can later
+        # filter on "only return pairs that have been summarized away".
+        # `prior_count` is the index the user message we persisted earlier
+        # in this request occupies in the chronological log. Indexing
+        # runs in a daemon thread (mirrors fact_extractor) so it never
+        # blocks the response. Anonymous sessions get this too.
+        try:
+            session_recall = _get_session_recall()
+            session_recall.index_turn_async(
+                session_id=session.id,
+                turn_index=prior_count,
+                user_text=user_message,
+                assistant_text=ai_reply,
+            )
+        except Exception as exc:
+            _logger.error('mcp_chatbot: session recall indexing trigger failed: %s', exc)
 
         # ── Touch activity — resets the idle timeout clock ───────────────
         # Skip when verify_email_otp just wrote partner_id to this session

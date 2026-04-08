@@ -1,5 +1,45 @@
+import logging
+import os
+
 from odoo import models, fields, api
 from datetime import timedelta
+
+_logger = logging.getLogger(__name__)
+
+
+def _load_session_recall():
+    """
+    Load services/session_recall.py via importlib (the services/ dir is
+    not an Odoo package). Mirrors the loader pattern in
+    controllers/chatbot_controller.py so a Chroma error in this file
+    can never block session closure.
+    """
+    import sys, importlib.util
+    services_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), '..', 'services')
+    )
+    if services_dir not in sys.path:
+        sys.path.insert(0, services_dir)
+
+    if 'embedding_service' not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            'embedding_service',
+            os.path.join(services_dir, 'embedding_service.py'),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['embedding_service'] = mod
+        spec.loader.exec_module(mod)
+
+    if 'mcp_chatbot_session_recall' not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            'mcp_chatbot_session_recall',
+            os.path.join(services_dir, 'session_recall.py'),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['mcp_chatbot_session_recall'] = mod
+        spec.loader.exec_module(mod)
+
+    return sys.modules['mcp_chatbot_session_recall']
 
 
 class ChatbotSession(models.Model):
@@ -186,12 +226,25 @@ class ChatbotSession(models.Model):
         raise ValueError('Either session_token or partner_id must be provided')
 
     def action_close(self):
-        """Close the session."""
+        """Close the session and drop its semantic-recall collection."""
         for rec in self:
             print("="*60)
             print(f"Session ({rec.name}) is closed")
             print("="*60)
             rec.write({'state': 'closed'})
+
+            # Best-effort drop of the per-session ChromaDB recall
+            # collection. Wrapped to never block close — if Chroma is
+            # down, the close still succeeds and we leave a tiny
+            # orphaned collection behind (cleanable later).
+            try:
+                session_recall = _load_session_recall()
+                session_recall.delete_session_collection(rec.id)
+            except Exception as exc:
+                _logger.warning(
+                    "mcp_chatbot: session recall cleanup failed for session %s: %s",
+                    rec.id, exc,
+                )
 
     def touch_activity(self):
         """Update last_activity to now. Called on every incoming message to reset the idle clock."""
