@@ -113,10 +113,14 @@ class ResConfigSettings(models.TransientModel):
         default=30,
     )
 
-    chatbot_summary_interval = fields.Integer(
-        string="Summary Interval (messages)",
-        config_parameter='mcp_chatbot.summary_interval',
-        default=10,
+    chatbot_summary_token_budget = fields.Integer(
+        string="Summary Token Budget",
+        config_parameter='mcp_chatbot.summary_token_budget',
+        default=3000,
+        help="Approximate token count for the unsummarized tail of the "
+             "conversation. When the tail exceeds this budget the rolling "
+             "summary is regenerated in the background. Tokens are estimated "
+             "with a ~4 chars/token heuristic. Default 3000 (~750 words).",
     )
 
     # ------------------------------------------------------------------ #

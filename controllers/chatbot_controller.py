@@ -27,6 +27,20 @@ def _get_fact_extractor():
     return sys.modules['mcp_chatbot_fact_extractor']
 
 
+def _get_summarizer():
+    import sys, importlib.util
+    services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
+    if 'mcp_chatbot_summarizer' not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            'mcp_chatbot_summarizer',
+            os.path.join(services_dir, 'summarizer.py')
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules['mcp_chatbot_summarizer'] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules['mcp_chatbot_summarizer']
+
+
 def _get_memory_service():
     import sys, importlib.util
     services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
@@ -55,6 +69,31 @@ def _get_memory_service():
         spec.loader.exec_module(mod)
 
     return sys.modules['mcp_chatbot_memory_service']
+
+
+def _estimate_tokens(messages: list) -> int:
+    """
+    Heuristic token count for a list of {role, content} dicts.
+
+    We deliberately avoid `tiktoken` here:
+      * the project ships lean (no extra deps in the Odoo venv);
+      * the actual tokenizer depends on the LLM provider (OpenAI / Groq /
+        OpenRouter / local) and tiktoken only knows OpenAI's encodings,
+        so on non-OpenAI models the count is wrong anyway;
+      * we only need a monotonic signal — "is the unsummarized tail
+        getting too big?" — not byte-perfect accuracy.
+
+    The standard rule of thumb is ~4 characters per token for English
+    plus ~4 tokens of role/formatting overhead per message. This
+    consistently overcounts by 10–20% on Latin scripts, which is the
+    safe direction (we trigger summarisation slightly early rather
+    than slightly late).
+    """
+    total = 0
+    for msg in messages:
+        content = msg.get('content', '') or ''
+        total += len(content) // 4 + 4
+    return total
 
 
 class MCPChatbotController(http.Controller):
@@ -152,8 +191,15 @@ class MCPChatbotController(http.Controller):
             'content':    user_message,
         })
 
-        # ── Read summary interval from settings ──────────────────────────
-        summary_interval = int(self._get_param('mcp_chatbot.summary_interval', 10))
+        # ── Read summary token budget from settings ──────────────────────
+        # Token-aware threshold (replaces the old message-count interval).
+        # When the unsummarized tail exceeds this budget we kick off the
+        # background summariser. 3000 tokens ≈ 750 words ≈ ~12 typical
+        # chat messages, leaving plenty of headroom for system prompt,
+        # tool schemas, identity context and RAG memories on an 8k model.
+        summary_token_budget = int(
+            self._get_param('mcp_chatbot.summary_token_budget', 3000)
+        )
 
         # ── Build conversation history ───────────────────────────────────
         # IMPORTANT: _async_process_message() already appends the current
@@ -173,35 +219,66 @@ class MCPChatbotController(http.Controller):
         prior_count   = len(prior_history)
 
         unsummarized_count = prior_count - session.last_summarized_count
-
-        if unsummarized_count >= summary_interval:
-            messages_to_summarize = prior_history[-unsummarized_count:]
-            summary_prefix = []
-            if session.history_summary:
-                summary_prefix = [{
-                    'role':    'system',
-                    'content': f'Previous summary to extend: {session.history_summary}',
-                }]
-            new_summary = mcp_service.summarize_history(summary_prefix + messages_to_summarize)
-            session.sudo().write({
-                'history_summary':       new_summary,
-                'last_summarized_count': prior_count,
-            })
-            unsummarized_count = 0
-
         unsummarized_messages = (
             prior_history[-unsummarized_count:]
             if unsummarized_count > 0 else []
         )
+        unsummarized_tokens = _estimate_tokens(unsummarized_messages)
 
-        # Only inject the summary block when a summary actually exists,
-        # otherwise the LLM misreads the raw messages after it as summarised content.
+        # ── Trigger ASYNC summarisation if token budget is exceeded ──────
+        # Summarisation no longer runs on the request path. We fire a
+        # background daemon thread (mirrors fact_extractor) and continue
+        # this turn with the *current* summary + the full unsummarized
+        # tail. By the next turn the background thread will normally
+        # have written the new summary, and `unsummarized_count` will
+        # drop back to 0. If the thread is still running (or failed),
+        # the in-flight guard / next turn's recheck handles it
+        # gracefully — we simply keep using the older summary plus a
+        # slightly longer tail until the new summary lands.
+        compacting = False
+        summarizer = _get_summarizer()
+        if unsummarized_tokens >= summary_token_budget and unsummarized_messages:
+            try:
+                summary_settings = mcp_service._get_summary_settings()
+                # The previous summary is now passed in directly so the
+                # background thread can run the structured-update prompt
+                # against it. The unsummarized tail no longer needs to be
+                # prefixed with a "Previous summary to extend: ..." system
+                # message — the new prompt format takes care of that.
+                summarizer.summarize_async(
+                    api_key=summary_settings['api_key'],
+                    base_url=summary_settings['base_url'],
+                    model_name=summary_settings['model_name'],
+                    session_id=session.id,
+                    previous_summary_raw=session.history_summary or '',
+                    messages_to_summarize=unsummarized_messages,
+                    new_summarized_count=prior_count,
+                    odoo_registry=request.env.registry,
+                    odoo_db=request.env.cr.dbname,
+                )
+                compacting = True
+                _logger.info(
+                    'mcp_chatbot: async summarisation triggered for session %s '
+                    '(covering %d msgs ≈ %d tokens, budget %d)',
+                    session.id, prior_count, unsummarized_tokens, summary_token_budget,
+                )
+            except Exception as exc:
+                _logger.error('mcp_chatbot: async summarisation trigger failed: %s', exc)
+
+        # Only inject the summary block when a summary actually exists.
+        # `history_summary` is now a JSON-encoded structured summary; we
+        # render it back into a clean prose block here so the main chatbot
+        # LLM sees the same shape it always has. Legacy prose summaries
+        # are detected and rendered as `recent_context` (handled inside
+        # render_summary_for_prompt).
         summary_block = []
         if session.history_summary:
-            summary_block = [{
-                'role':    'system',
-                'content': f'Summary of the conversation so far: {session.history_summary}',
-            }]
+            rendered_summary = summarizer.render_summary_for_prompt(session.history_summary)
+            if rendered_summary:
+                summary_block = [{
+                    'role':    'system',
+                    'content': rendered_summary,
+                }]
 
         conversation_history = summary_block + unsummarized_messages
 
@@ -345,7 +422,7 @@ class MCPChatbotController(http.Controller):
             except Exception as exc:
                 _logger.error('mcp_chatbot: fact extraction trigger failed: %s', exc)
 
-        return {'reply': ai_reply}
+        return {'reply': ai_reply, 'compacting': compacting}
 
     # ------------------------------------------------------------------ #
     # POST /mcp_chatbot/info                                               #
@@ -415,7 +492,7 @@ class MCPChatbotController(http.Controller):
         For anonymous users, the session is identified by the provided token.
 
         Returns:
-            { "status": "open",      "messages": [...], "summary_interval": N }
+            { "status": "open",      "messages": [...] }
             { "status": "closed",    "messages": [] }
             { "status": "not_found", "messages": [] }
         """
@@ -443,7 +520,6 @@ class MCPChatbotController(http.Controller):
             return {
                 'status': 'open',
                 'messages': messages,
-                'summary_interval': int(self._get_param('mcp_chatbot.summary_interval', 10)),
             }
 
         # ── Anonymous user: lookup by token ──────────────────────────────────
@@ -469,7 +545,6 @@ class MCPChatbotController(http.Controller):
         return {
             'status': 'open',
             'messages': messages,
-            'summary_interval': int(self._get_param('mcp_chatbot.summary_interval', 10)),
         }
 
     # ------------------------------------------------------------------ #
