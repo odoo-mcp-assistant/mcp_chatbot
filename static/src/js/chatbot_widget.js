@@ -123,6 +123,32 @@
             container.scrollTop = container.scrollHeight;
         }
 
+        // Typewriter-style rendering for assistant replies. The full text
+        // already lives in JS memory by the time we call this — we're only
+        // *painting* it slowly to mimic real LLM streaming. No backend
+        // changes involved.
+        function streamMessageIntoBubble(container, text, onDone) {
+            var bubble = document.createElement('div');
+            bubble.className = 'mcp-chatbot-msg assistant';
+            container.appendChild(bubble);
+            container.scrollTop = container.scrollHeight;
+
+            var i = 0;
+            var DELAY_MS = 15;   // lower = faster typing
+
+            function tick() {
+                if (i >= text.length) {
+                    if (onDone) { onDone(); }
+                    return;
+                }
+                bubble.textContent += text.charAt(i);
+                i++;
+                container.scrollTop = container.scrollHeight;
+                setTimeout(tick, DELAY_MS);
+            }
+            tick();
+        }
+
         function showTyping(container) {
             var indicator = document.createElement('div');
             indicator.className = 'mcp-chatbot-msg typing';
@@ -438,7 +464,7 @@
                 jsonRpc('/mcp_chatbot/message', payload)
                     .then(function (result) {
                         if (typingEl) { typingEl.remove(); typingEl = null; }
-                        appendMessage(msgArea, 'assistant', result && result.reply
+                        streamMessageIntoBubble(msgArea, result && result.reply
                             ? result.reply
                             : 'Sorry, I could not get a reply.');
                         setEndSessionVisible(true);   // session now exists
