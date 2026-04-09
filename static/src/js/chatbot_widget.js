@@ -127,6 +127,11 @@
         // already lives in JS memory by the time we call this — we're only
         // *painting* it slowly to mimic real LLM streaming. No backend
         // changes involved.
+        //
+        // Auto-scroll uses the standard "sticky bottom" pattern: we only
+        // re-scroll to the bottom while the user is already within
+        // STICK_THRESHOLD_PX of it. As soon as they scroll up to read
+        // earlier content, we stop hijacking their scroll position.
         function streamMessageIntoBubble(container, text, onDone) {
             var bubble = document.createElement('div');
             bubble.className = 'mcp-chatbot-msg assistant';
@@ -134,16 +139,26 @@
             container.scrollTop = container.scrollHeight;
 
             var i = 0;
-            var DELAY_MS = 15;   // lower = faster typing
+            var DELAY_MS = 15;              // lower = faster typing
+            var STICK_THRESHOLD_PX = 50;    // how close to the bottom counts as "stuck"
 
             function tick() {
                 if (i >= text.length) {
                     if (onDone) { onDone(); }
                     return;
                 }
+                // Capture stickiness BEFORE appending the new char, otherwise
+                // scrollHeight grows under us and the check becomes wrong.
+                var distanceFromBottom =
+                    container.scrollHeight - container.scrollTop - container.clientHeight;
+                var wasStickyToBottom = distanceFromBottom < STICK_THRESHOLD_PX;
+
                 bubble.textContent += text.charAt(i);
                 i++;
-                container.scrollTop = container.scrollHeight;
+
+                if (wasStickyToBottom) {
+                    container.scrollTop = container.scrollHeight;
+                }
                 setTimeout(tick, DELAY_MS);
             }
             tick();
@@ -441,7 +456,11 @@
 
                 appendMessage(msgArea, 'user', text);
                 input.value = '';
+                // Lock both the button AND the input. Disabling the input
+                // also blocks the Enter-key path, since keydown events do
+                // not fire on disabled inputs.
                 sendBtn.disabled = true;
+                input.disabled = true;
 
                 // Show typing indicator immediately. Summarisation now runs
                 // in a background thread on the server, so the request path
@@ -461,12 +480,25 @@
                     welcomeText = null;
                 }
 
+                function unlockInput() {
+                    sendBtn.disabled = false;
+                    input.disabled = false;
+                    input.focus();
+                }
+
                 jsonRpc('/mcp_chatbot/message', payload)
                     .then(function (result) {
                         if (typingEl) { typingEl.remove(); typingEl = null; }
-                        streamMessageIntoBubble(msgArea, result && result.reply
-                            ? result.reply
-                            : 'Sorry, I could not get a reply.');
+                        // Unlock only AFTER the typewriter finishes painting
+                        // the reply, so the user cannot send a follow-up
+                        // mid-stream.
+                        streamMessageIntoBubble(
+                            msgArea,
+                            result && result.reply
+                                ? result.reply
+                                : 'Sorry, I could not get a reply.',
+                            unlockInput
+                        );
                         setEndSessionVisible(true);   // session now exists
                         // Backend tells us when it kicked off a background
                         // summarisation. Show the bar as a non-blocking
@@ -479,10 +511,8 @@
                         if (typingEl) { typingEl.remove(); typingEl = null; }
                         appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
                         console.error('[mcp_chatbot] RPC error:', err);
-                    })
-                    .finally(function () {
-                        sendBtn.disabled = false;
-                        input.focus();
+                        // Error path: no streaming, so unlock immediately.
+                        unlockInput();
                     });
             }
 
