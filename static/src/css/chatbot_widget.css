@@ -72,7 +72,7 @@
     bottom: 24px;
     right: 24px;
     width: 360px;
-    max-height: 535px;
+    height: 535px;
     display: flex;
     flex-direction: column;
     border-radius: 14px;
@@ -328,8 +328,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    background: #f4f9fb;
-    min-height: 200px;
+    background: #ffffff;
 }
 
 /* Individual message bubbles */
@@ -345,26 +344,83 @@
 
 .mcp-chatbot-msg.user {
     align-self: flex-end;
-    background: #006699;
-    color: #ffffff;
+    background: #f4f9fb;
+    color: #333333;
+    border: 1px solid #c8dfe8;
     border-bottom-right-radius: 4px;
 }
 
+/* ── Assistant message: no bubble, full width, with avatar ──── */
 .mcp-chatbot-msg.assistant {
-    align-self: flex-start;
-    background: #ffffff;
+    align-self: stretch;
+    background: transparent;
     color: #333333;
-    border: 1px solid #c8dfe8;
-    border-bottom-left-radius: 4px;
+    border: none;
+    border-radius: 0;
+    padding: 4px 16px 4px 0;
+    max-width: 100%;
+    position: relative;
 }
 
-/* Typing indicator */
-.mcp-chatbot-msg.typing {
+/* ── Vertical line separator for assistant messages (from under avatar) ──── */
+.mcp-chatbot-msg.assistant {
+    position: relative;
+}
+
+.mcp-chatbot-msg.assistant::before {
+    content: '';
+    position: absolute;
+    /* Avatar is 20px wide starting at x=0 of the bubble's content box
+       (padding-left:0, inner margin-left:0), so its center is at x=10.
+       A 2px-wide line needs left:9 to have its center land on x=10. */
+    left: 9px;
+    top: 30px;
+    bottom: 6px;
+    width: 2px;
+    background: #c8dfe8;
+    border-radius: 2px;
+    opacity: 0.6;
+}
+
+/* Wrap text + avatar in a flex row */
+.mcp-chatbot-msg.assistant .mcp-assistant-inner {
+    display: flex;
+    align-items: flex-end;
+    gap: 0;
+    margin-left: 0;
+}
+
+/* Avatar shown before the assistant message text */
+.mcp-chatbot-msg.assistant .mcp-assistant-avatar {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid #e8e8e8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+    vertical-align: middle;
+    margin-right: 8px;
+    flex-shrink: 0;
     align-self: flex-start;
-    background: #ffffff;
-    border: 1px solid #c8dfe8;
-    border-bottom-left-radius: 4px;
-    padding: 10px 16px;
+    margin-top: 2px;
+}
+
+.mcp-assistant-text {
+    flex: 1;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+/* Typing indicator — same horizontal alignment as assistant messages
+   so the avatar lands in the exact same x-position */
+.mcp-chatbot-msg.typing {
+    align-self: stretch;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 4px 16px 4px 0;
+    max-width: 100%;
     font-style: italic;
     color: #999999;
     font-size: 13px;
@@ -407,7 +463,7 @@
     gap: 0;
     padding: 10px 12px;
     border-top: none;
-    background: #f4f9fb;
+    background: #ffffff;
 }
 
 .mcp-chatbot-input-wrapper {
@@ -422,7 +478,7 @@
 }
 
 .mcp-chatbot-input-wrapper:focus-within {
-    border-color: #006699;
+    border-color: #4d8eb3;
 }
 
 .mcp-chatbot-input {
@@ -449,18 +505,29 @@
     height: 32px;
     border-radius: 50%;
     border: none;
-    background: #006699;
+    background: #4d8eb3;
     color: #ffffff;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: background 0.15s;
+    transition: background 0.15s, opacity 0.2s ease, transform 0.2s ease, width 0.2s ease, margin 0.2s ease;
+    opacity: 1;
+    transform: scale(1);
+    overflow: hidden;
+}
+
+.mcp-chatbot-send.mcp-send-hidden {
+    opacity: 0;
+    transform: scale(0.6);
+    width: 0;
+    margin-left: 0;
+    pointer-events: none;
 }
 
 .mcp-chatbot-send:hover {
-    background: #005580;
+    background: #3d7ba0;
 }
 
 .mcp-chatbot-send:disabled {
@@ -472,6 +539,7 @@
 @media (max-width: 480px) {
     .mcp-chatbot-window {
         width: calc(100vw - 24px);
+        height: calc(100vh - 48px);
         right: 12px;
         bottom: 12px;
     }

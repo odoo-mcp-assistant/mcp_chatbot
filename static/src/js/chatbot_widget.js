@@ -118,7 +118,29 @@
         function appendMessage(container, role, text) {
             var bubble = document.createElement('div');
             bubble.className = 'mcp-chatbot-msg ' + role;
-            bubble.textContent = text;
+
+            if (role === 'assistant') {
+                var inner = document.createElement('div');
+                inner.className = 'mcp-assistant-inner';
+
+                var textSpan = document.createElement('span');
+                textSpan.className = 'mcp-assistant-text';
+                textSpan.textContent = text;
+
+                var avatar = document.createElement('img');
+                avatar.className = 'mcp-assistant-avatar';
+                // Use the same logo shown in the header
+                var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
+                avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+                avatar.alt = '';
+
+                inner.appendChild(avatar);
+                inner.appendChild(textSpan);
+                bubble.appendChild(inner);
+            } else {
+                bubble.textContent = text;
+            }
+
             container.appendChild(bubble);
             container.scrollTop = container.scrollHeight;
         }
@@ -133,19 +155,29 @@
         // STICK_THRESHOLD_PX of it. As soon as they scroll up to read
         // earlier content, we stop hijacking their scroll position.
         function streamMessageIntoBubble(container, text, onDone) {
-            var DELAY_MS = 15;              // lower = faster typing
-            var STICK_THRESHOLD_PX = 50;    // how close to the bottom counts as "stuck"
+            var DELAY_MS = 15;
+            var STICK_THRESHOLD_PX = 50;
 
             var bubble = document.createElement('div');
             bubble.className = 'mcp-chatbot-msg assistant';
 
-            // Apply the sticky-bottom rule to the initial bubble append too,
-            // not just to per-character ticks. If the user scrolled up while
-            // waiting for the round-trip, an unconditional scrollTop here
-            // would yank them back to the bottom the instant the reply
-            // arrives — defeating the whole point of the sticky logic.
-            // Capture their position BEFORE appending; appending grows
-            // scrollHeight and would skew the measurement.
+            // Build inner flex wrapper with text span + avatar
+            var inner = document.createElement('div');
+            inner.className = 'mcp-assistant-inner';
+
+            var textSpan = document.createElement('span');
+            textSpan.className = 'mcp-assistant-text';
+
+            var avatar = document.createElement('img');
+            avatar.className = 'mcp-assistant-avatar';
+            var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
+            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+            avatar.alt = '';
+
+            inner.appendChild(avatar);
+            inner.appendChild(textSpan);
+            bubble.appendChild(inner);
+
             var initialDistance =
                 container.scrollHeight - container.scrollTop - container.clientHeight;
             var wasStickyOnEntry = initialDistance < STICK_THRESHOLD_PX;
@@ -162,13 +194,11 @@
                     if (onDone) { onDone(); }
                     return;
                 }
-                // Capture stickiness BEFORE appending the new char, otherwise
-                // scrollHeight grows under us and the check becomes wrong.
                 var distanceFromBottom =
                     container.scrollHeight - container.scrollTop - container.clientHeight;
                 var wasStickyToBottom = distanceFromBottom < STICK_THRESHOLD_PX;
 
-                bubble.textContent += text.charAt(i);
+                textSpan.textContent += text.charAt(i);
                 i++;
 
                 if (wasStickyToBottom) {
@@ -181,8 +211,25 @@
 
         function showTyping(container) {
             var indicator = document.createElement('div');
-            indicator.className = 'mcp-chatbot-msg typing';
-            indicator.textContent = 'Thinking...';
+            indicator.className = 'mcp-chatbot-msg assistant typing';
+
+            var inner = document.createElement('div');
+            inner.className = 'mcp-assistant-inner';
+
+            var avatar = document.createElement('img');
+            avatar.className = 'mcp-assistant-avatar';
+            var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
+            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+            avatar.alt = '';
+
+            var textSpan = document.createElement('span');
+            textSpan.className = 'mcp-assistant-text';
+            textSpan.textContent = 'Thinking...';
+
+            inner.appendChild(avatar);
+            inner.appendChild(textSpan);
+            indicator.appendChild(inner);
+
             container.appendChild(indicator);
             container.scrollTop = container.scrollHeight;
             return indicator;
@@ -378,11 +425,21 @@
                 isOpen = true;
                 sessionStorage.setItem(OPEN_KEY, '1');
                 if (bubble) { bubble.classList.remove('mcp-bubble-hovered'); }
-                msgArea.innerHTML = '';
-                loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
-                    setEndSessionVisible(hasSession);
+                // Only refetch history when the message area is empty
+                // (first open of the tab, or after an explicit end-session).
+                // If there is already DOM content, it means the user just
+                // minimised — keep it as-is. Refetching here would race the
+                // in-flight /message transaction (READ COMMITTED can't see
+                // the not-yet-committed user row), causing the user's
+                // message to vanish until the next open cycle.
+                if (msgArea.children.length === 0) {
+                    loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
+                        setEndSessionVisible(hasSession);
+                        input.focus();
+                    });
+                } else {
                     input.focus();
-                });
+                }
             }
 
             function closeWindow() {
@@ -390,7 +447,11 @@
                 bubble.classList.remove('d-none');
                 isOpen = false;
                 sessionStorage.setItem(OPEN_KEY, '0');
-                msgArea.innerHTML = '';   // clear DOM — backend is source of truth
+                // Do NOT wipe msgArea here. The widget is just hidden via
+                // d-none — keeping the DOM intact means a mid-stream reply
+                // continues painting into the (hidden) bubble and the user
+                // sees the full conversation when they reopen, with no race
+                // against the in-flight backend transaction.
             }
 
             bubble.addEventListener('click', function () {
@@ -486,6 +547,14 @@
                 appendMessage(msgArea, 'user', text);
                 input.value = '';
                 sendBtn.disabled = true;
+                // Input was just cleared, so updateSendVisibility() will
+                // hide the button. If the user starts typing again while
+                // the bot is still thinking, the `input` listener will
+                // re-show the button — it stays disabled (greyed-out)
+                // until the reply finishes painting, so the click is a
+                // no-op but the user gets visual feedback that their
+                // next message is ready to send.
+                updateSendVisibility();
 
                 // Show typing indicator immediately. Summarisation now runs
                 // in a background thread on the server, so the request path
@@ -507,6 +576,7 @@
 
                 function unlockSend() {
                     sendBtn.disabled = false;
+                    updateSendVisibility();
                     input.focus();
                 }
 
@@ -541,6 +611,26 @@
             }
 
             sendBtn.addEventListener('click', sendMessage);
+
+            // ── Send button visibility (hide when input is empty) ─────
+            function updateSendVisibility() {
+                // Visibility tracks the input text, not the disabled
+                // state. While a request is in flight the button stays
+                // `disabled` (greyed-out via the :disabled CSS rule) but
+                // still appears as soon as the user types something, so
+                // they get clear feedback that their next message is
+                // queued up and ready to send once the bot finishes.
+                // The re-entrancy guard inside sendMessage() keeps the
+                // click itself a no-op.
+                if (input.value.trim().length > 0) {
+                    sendBtn.classList.remove('mcp-send-hidden');
+                } else {
+                    sendBtn.classList.add('mcp-send-hidden');
+                }
+            }
+            // Start hidden
+            sendBtn.classList.add('mcp-send-hidden');
+            input.addEventListener('input', updateSendVisibility);
 
             input.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
