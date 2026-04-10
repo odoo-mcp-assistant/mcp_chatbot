@@ -34,6 +34,7 @@ JSON in our schema) are detected on read and stuffed into
 
 import json
 import logging
+import re
 import threading
 
 from openai import OpenAI
@@ -68,7 +69,36 @@ FIELD_CAPS = {
     'unresolved_questions':  5,
     'current_goal_chars':  500,
     'recent_context_chars': 1000,
+    'note_chars':            200,
 }
+
+
+# ---------------------------------------------------------------------------
+# Price scrubber
+# ---------------------------------------------------------------------------
+# Tool-derived numeric data (prices, stock counts, dates, …) MUST NOT survive
+# in the rolling summary, because the summary is re-injected as an authoritative
+# system message on every subsequent turn. If the LLM ever wrote a stale or
+# wrong price into a product `note` or into `recent_context`, that wrong price
+# would be re-fed to the chatbot LLM forever and would override the live tool
+# results. The schema hint asks the LLM not to do this; this regex is the hard
+# defense in case it does it anyway.
+_PRICE_RE = re.compile(
+    r'\b\d[\d\s.,]*\s?(?:DT|TND|TND\.|MAD|EUR|USD|€|\$)\b',
+    re.IGNORECASE,
+)
+
+
+def _scrub_prices(text: str) -> str:
+    """Strip price-like substrings (e.g. '1169 DT', '€199.90') from text.
+
+    Used on free-form fields the summary LLM controls (`note`, `recent_context`)
+    so a hallucinated or stale price can never get baked into the rolling
+    summary and re-injected on later turns.
+    """
+    if not text:
+        return text
+    return _PRICE_RE.sub('', text).strip()
 
 
 def _empty_summary() -> dict:
@@ -138,7 +168,17 @@ def _validate_and_cap(data: dict) -> dict:
     if isinstance(entities_in, dict):
         prods = entities_in.get('products')
         if isinstance(prods, list):
-            cleaned = [p for p in prods if isinstance(p, dict)]
+            cleaned = []
+            for p in prods:
+                if not isinstance(p, dict):
+                    continue
+                # Scrub any price-like substrings the LLM may have stuffed
+                # into the free-form `note` field, and cap its length.
+                note = p.get('note')
+                if isinstance(note, str):
+                    p = dict(p)  # don't mutate the caller's dict
+                    p['note'] = _scrub_prices(note)[:FIELD_CAPS['note_chars']]
+                cleaned.append(p)
             out['entities']['products'] = cleaned[-FIELD_CAPS['products']:]
 
         orders = entities_in.get('orders')
@@ -163,7 +203,8 @@ def _validate_and_cap(data: dict) -> dict:
         out['unresolved_questions'] = cleaned[-FIELD_CAPS['unresolved_questions']:]
 
     if isinstance(data.get('recent_context'), str):
-        out['recent_context'] = data['recent_context'].strip()[:FIELD_CAPS['recent_context_chars']]
+        scrubbed = _scrub_prices(data['recent_context'])
+        out['recent_context'] = scrubbed.strip()[:FIELD_CAPS['recent_context_chars']]
 
     return out
 
@@ -258,13 +299,13 @@ _SCHEMA_HINT = """{
   "_v": 1,
   "current_goal": "<one sentence — what the user is trying to do RIGHT NOW, or '' if unclear>",
   "entities": {
-    "products":    [{"name": "<exact name>", "id": "<id or empty>", "note": "<short context>"}],
+    "products":    [{"name": "<exact name>", "id": "<id or empty>", "note": "<short DURABLE context only — e.g. 'user is comparing this with X', 'preferred over Y'. NEVER put prices, stock levels, quantities, dates, promo amounts or any tool-derived numeric data here.>"}],
     "orders":      [{"ref": "<exact ref like S00108>", "status": "<status or empty>"}],
     "identifiers": {"email": "<...>", "phone": "<...>"}
   },
   "user_preferences":     ["<short bullet>", "..."],
   "unresolved_questions": ["<short bullet>", "..."],
-  "recent_context":       "<1-2 sentences for the most recent topic shift>"
+  "recent_context":       "<1-2 sentences for the most recent topic shift. NEVER include prices, stock levels or any other numeric tool data — only describe what the conversation is about.>"
 }"""
 
 
