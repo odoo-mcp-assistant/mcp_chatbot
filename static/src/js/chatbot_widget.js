@@ -133,14 +133,29 @@
         // STICK_THRESHOLD_PX of it. As soon as they scroll up to read
         // earlier content, we stop hijacking their scroll position.
         function streamMessageIntoBubble(container, text, onDone) {
-            var bubble = document.createElement('div');
-            bubble.className = 'mcp-chatbot-msg assistant';
-            container.appendChild(bubble);
-            container.scrollTop = container.scrollHeight;
-
-            var i = 0;
             var DELAY_MS = 15;              // lower = faster typing
             var STICK_THRESHOLD_PX = 50;    // how close to the bottom counts as "stuck"
+
+            var bubble = document.createElement('div');
+            bubble.className = 'mcp-chatbot-msg assistant';
+
+            // Apply the sticky-bottom rule to the initial bubble append too,
+            // not just to per-character ticks. If the user scrolled up while
+            // waiting for the round-trip, an unconditional scrollTop here
+            // would yank them back to the bottom the instant the reply
+            // arrives — defeating the whole point of the sticky logic.
+            // Capture their position BEFORE appending; appending grows
+            // scrollHeight and would skew the measurement.
+            var initialDistance =
+                container.scrollHeight - container.scrollTop - container.clientHeight;
+            var wasStickyOnEntry = initialDistance < STICK_THRESHOLD_PX;
+
+            container.appendChild(bubble);
+            if (wasStickyOnEntry) {
+                container.scrollTop = container.scrollHeight;
+            }
+
+            var i = 0;
 
             function tick() {
                 if (i >= text.length) {
@@ -451,16 +466,26 @@
 
             // ── Send message ──────────────────────────────────────────
             function sendMessage() {
+                // Re-entrancy guard. The send button stays disabled from
+                // the moment a request is fired until the typewriter has
+                // finished painting the reply, so any second click OR any
+                // Enter-keypress during that window is dropped here. The
+                // input itself stays editable so the user can read, edit
+                // and even type their next message ahead of time — same
+                // UX we had before the streaming feature, when only the
+                // send button was locked while "Thinking..." was visible.
+                //
+                // This also covers the offline case: updateStatus('offline')
+                // disables the send button, so sendMessage() short-circuits
+                // here without us having to special-case it.
+                if (sendBtn.disabled) { return; }
+
                 var text = input.value.trim();
                 if (!text) { return; }
 
                 appendMessage(msgArea, 'user', text);
                 input.value = '';
-                // Lock both the button AND the input. Disabling the input
-                // also blocks the Enter-key path, since keydown events do
-                // not fire on disabled inputs.
                 sendBtn.disabled = true;
-                input.disabled = true;
 
                 // Show typing indicator immediately. Summarisation now runs
                 // in a background thread on the server, so the request path
@@ -480,9 +505,8 @@
                     welcomeText = null;
                 }
 
-                function unlockInput() {
+                function unlockSend() {
                     sendBtn.disabled = false;
-                    input.disabled = false;
                     input.focus();
                 }
 
@@ -490,14 +514,14 @@
                     .then(function (result) {
                         if (typingEl) { typingEl.remove(); typingEl = null; }
                         // Unlock only AFTER the typewriter finishes painting
-                        // the reply, so the user cannot send a follow-up
+                        // the reply, so the user cannot fire a follow-up
                         // mid-stream.
                         streamMessageIntoBubble(
                             msgArea,
                             result && result.reply
                                 ? result.reply
                                 : 'Sorry, I could not get a reply.',
-                            unlockInput
+                            unlockSend
                         );
                         setEndSessionVisible(true);   // session now exists
                         // Backend tells us when it kicked off a background
@@ -512,7 +536,7 @@
                         appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
                         console.error('[mcp_chatbot] RPC error:', err);
                         // Error path: no streaming, so unlock immediately.
-                        unlockInput();
+                        unlockSend();
                     });
             }
 
@@ -520,6 +544,11 @@
 
             input.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
+                    // Always preventDefault to suppress any default Enter
+                    // behaviour (form submit, newline insertion). The
+                    // re-entrancy guard inside sendMessage() handles the
+                    // "still in flight" case — pressing Enter while the
+                    // bot is replying is a silent no-op.
                     e.preventDefault();
                     sendMessage();
                 }
