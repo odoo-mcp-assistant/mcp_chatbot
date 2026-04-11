@@ -5,7 +5,7 @@ import logging
 import threading
 
 from odoo import models, api
-from openai import AsyncOpenAI
+from openai import OpenAI, AsyncOpenAI
 import json
 
 from .base_client import BaseHTTPMCPClient
@@ -23,9 +23,10 @@ _tool_schemas: list = []
 _init_lock = threading.Lock()
 _initialized = False
 
-# Cached AsyncOpenAI clients — keyed by (api_key, base_url) so they survive
+# Cached OpenAI clients — keyed by (api_key, base_url) so they survive
 # settings changes while avoiding per-request instantiation overhead.
 _async_client_cache: dict = {}   # (api_key, base_url) → AsyncOpenAI
+_sync_client_cache: dict = {}    # (api_key, base_url) → OpenAI
 
 
 def _get_async_client(api_key, base_url) -> AsyncOpenAI:
@@ -38,6 +39,18 @@ def _get_async_client(api_key, base_url) -> AsyncOpenAI:
             timeout=118.0,
         )
     return _async_client_cache[key]
+
+    
+def _get_sync_client(api_key, base_url) -> OpenAI:
+    key = (api_key, base_url)
+    if key not in _sync_client_cache:
+        _sync_client_cache[key] = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=2,
+            timeout=118.0,
+        )
+    return _sync_client_cache[key]
 
 
 AUTH_REQUIRED_TOOLS = {
@@ -388,3 +401,39 @@ class MCPClientService(models.AbstractModel):
 
         return {'api_key': api_key, 'base_url': base_url, 'model_name': model_name}
 
+    @api.model
+    def summarize_history(self, history):
+        if not history:
+            return ""
+
+        settings = self._get_summary_settings()
+
+        client = _get_sync_client(settings['api_key'], settings['base_url'])
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a conversation summarizer. "
+                    "Given a chat history, produce a concise summary that preserves "
+                    "all important context: key questions asked, decisions made, "
+                    "products or data mentioned, and the current state of the conversation. "
+                    "CRITICAL: Always preserve exact product names, order references "
+                    "(e.g. S00108), email addresses, prices, and any technical identifiers "
+                    "exactly as they appear — never paraphrase or rename them. "
+                    "Be brief but complete."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Please summarize this conversation history:\n\n{history}",
+            },
+        ]
+
+        response = client.chat.completions.create(
+            model=settings['model_name'],
+            messages=messages,
+            temperature=0.3,
+        )
+
+        return response.choices[0].message.content or ""

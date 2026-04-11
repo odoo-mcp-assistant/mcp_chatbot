@@ -137,10 +137,10 @@
                                  id="chatbot_idle_timeout_setting">
                             <field name="chatbot_idle_timeout"/>
                         </setting>
-                        <setting string="Summary Token Budget"
-                                 help="Approximate token count for the unsummarized tail of the conversation. When the tail exceeds this budget the rolling summary is regenerated in the background. Default is 3000 (~750 words)."
-                                 id="chatbot_summary_token_budget_setting">
-                            <field name="chatbot_summary_token_budget"/>
+                        <setting string="Summary Interval"
+                                 help="Number of new messages after which the conversation history is summarized. Default is 10."
+                                 id="chatbot_summary_interval_setting">
+                            <field name="chatbot_summary_interval"/>
                         </setting>
                     </block>
 

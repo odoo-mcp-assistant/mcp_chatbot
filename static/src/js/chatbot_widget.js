@@ -118,118 +118,15 @@
         function appendMessage(container, role, text) {
             var bubble = document.createElement('div');
             bubble.className = 'mcp-chatbot-msg ' + role;
-
-            if (role === 'assistant') {
-                var inner = document.createElement('div');
-                inner.className = 'mcp-assistant-inner';
-
-                var textSpan = document.createElement('span');
-                textSpan.className = 'mcp-assistant-text';
-                textSpan.textContent = text;
-
-                var avatar = document.createElement('img');
-                avatar.className = 'mcp-assistant-avatar';
-                // Use the same logo shown in the header
-                var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
-                avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
-                avatar.alt = '';
-
-                inner.appendChild(avatar);
-                inner.appendChild(textSpan);
-                bubble.appendChild(inner);
-            } else {
-                bubble.textContent = text;
-            }
-
+            bubble.textContent = text;
             container.appendChild(bubble);
             container.scrollTop = container.scrollHeight;
         }
 
-        // Typewriter-style rendering for assistant replies. The full text
-        // already lives in JS memory by the time we call this — we're only
-        // *painting* it slowly to mimic real LLM streaming. No backend
-        // changes involved.
-        //
-        // Auto-scroll uses the standard "sticky bottom" pattern: we only
-        // re-scroll to the bottom while the user is already within
-        // STICK_THRESHOLD_PX of it. As soon as they scroll up to read
-        // earlier content, we stop hijacking their scroll position.
-        function streamMessageIntoBubble(container, text, onDone) {
-            var DELAY_MS = 15;
-            var STICK_THRESHOLD_PX = 50;
-
-            var bubble = document.createElement('div');
-            bubble.className = 'mcp-chatbot-msg assistant';
-
-            // Build inner flex wrapper with text span + avatar
-            var inner = document.createElement('div');
-            inner.className = 'mcp-assistant-inner';
-
-            var textSpan = document.createElement('span');
-            textSpan.className = 'mcp-assistant-text';
-
-            var avatar = document.createElement('img');
-            avatar.className = 'mcp-assistant-avatar';
-            var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
-            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
-            avatar.alt = '';
-
-            inner.appendChild(avatar);
-            inner.appendChild(textSpan);
-            bubble.appendChild(inner);
-
-            var initialDistance =
-                container.scrollHeight - container.scrollTop - container.clientHeight;
-            var wasStickyOnEntry = initialDistance < STICK_THRESHOLD_PX;
-
-            container.appendChild(bubble);
-            if (wasStickyOnEntry) {
-                container.scrollTop = container.scrollHeight;
-            }
-
-            var i = 0;
-
-            function tick() {
-                if (i >= text.length) {
-                    if (onDone) { onDone(); }
-                    return;
-                }
-                var distanceFromBottom =
-                    container.scrollHeight - container.scrollTop - container.clientHeight;
-                var wasStickyToBottom = distanceFromBottom < STICK_THRESHOLD_PX;
-
-                textSpan.textContent += text.charAt(i);
-                i++;
-
-                if (wasStickyToBottom) {
-                    container.scrollTop = container.scrollHeight;
-                }
-                setTimeout(tick, DELAY_MS);
-            }
-            tick();
-        }
-
         function showTyping(container) {
             var indicator = document.createElement('div');
-            indicator.className = 'mcp-chatbot-msg assistant typing';
-
-            var inner = document.createElement('div');
-            inner.className = 'mcp-assistant-inner';
-
-            var avatar = document.createElement('img');
-            avatar.className = 'mcp-assistant-avatar';
-            var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
-            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
-            avatar.alt = '';
-
-            var textSpan = document.createElement('span');
-            textSpan.className = 'mcp-assistant-text';
-            textSpan.textContent = 'Thinking...';
-
-            inner.appendChild(avatar);
-            inner.appendChild(textSpan);
-            indicator.appendChild(inner);
-
+            indicator.className = 'mcp-chatbot-msg typing';
+            indicator.textContent = 'Thinking...';
             container.appendChild(indicator);
             container.scrollTop = container.scrollHeight;
             return indicator;
@@ -264,6 +161,9 @@
             }
             jsonRpc('/mcp_chatbot/history', payload)
                 .then(function (result) {
+                    if (result && result.summary_interval) {
+                        summaryInterval = result.summary_interval;
+                    }
                     // If session is closed or not found, reset the token
                     if (!result || result.status === 'closed' || result.status === 'not_found') {
                         // Clear the old token and generate a new one
@@ -374,6 +274,7 @@
         // These are declared here so sendMessage can access them
         var sessionToken = null;
         var welcomeText  = null;
+        var summaryInterval = 10;   // default — overridden by backend response
 
         function initChatbot() {
             if (window.__mcpChatbotInit) { return; }
@@ -425,21 +326,11 @@
                 isOpen = true;
                 sessionStorage.setItem(OPEN_KEY, '1');
                 if (bubble) { bubble.classList.remove('mcp-bubble-hovered'); }
-                // Only refetch history when the message area is empty
-                // (first open of the tab, or after an explicit end-session).
-                // If there is already DOM content, it means the user just
-                // minimised — keep it as-is. Refetching here would race the
-                // in-flight /message transaction (READ COMMITTED can't see
-                // the not-yet-committed user row), causing the user's
-                // message to vanish until the next open cycle.
-                if (msgArea.children.length === 0) {
-                    loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
-                        setEndSessionVisible(hasSession);
-                        input.focus();
-                    });
-                } else {
+                msgArea.innerHTML = '';
+                loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
+                    setEndSessionVisible(hasSession);
                     input.focus();
-                }
+                });
             }
 
             function closeWindow() {
@@ -447,11 +338,7 @@
                 bubble.classList.remove('d-none');
                 isOpen = false;
                 sessionStorage.setItem(OPEN_KEY, '0');
-                // Do NOT wipe msgArea here. The widget is just hidden via
-                // d-none — keeping the DOM intact means a mid-stream reply
-                // continues painting into the (hidden) bubble and the user
-                // sees the full conversation when they reopen, with no race
-                // against the in-flight backend transaction.
+                msgArea.innerHTML = '';   // clear DOM — backend is source of truth
             }
 
             bubble.addEventListener('click', function () {
@@ -527,41 +414,48 @@
 
             // ── Send message ──────────────────────────────────────────
             function sendMessage() {
-                // Re-entrancy guard. The send button stays disabled from
-                // the moment a request is fired until the typewriter has
-                // finished painting the reply, so any second click OR any
-                // Enter-keypress during that window is dropped here. The
-                // input itself stays editable so the user can read, edit
-                // and even type their next message ahead of time — same
-                // UX we had before the streaming feature, when only the
-                // send button was locked while "Thinking..." was visible.
-                //
-                // This also covers the offline case: updateStatus('offline')
-                // disables the send button, so sendMessage() short-circuits
-                // here without us having to special-case it.
-                if (sendBtn.disabled) { return; }
-
                 var text = input.value.trim();
                 if (!text) { return; }
 
                 appendMessage(msgArea, 'user', text);
                 input.value = '';
                 sendBtn.disabled = true;
-                // Input was just cleared, so updateSendVisibility() will
-                // hide the button. If the user starts typing again while
-                // the bot is still thinking, the `input` listener will
-                // re-show the button — it stays disabled (greyed-out)
-                // until the reply finishes painting, so the click is a
-                // no-op but the user gets visual feedback that their
-                // next message is ready to send.
-                updateSendVisibility();
 
-                // Show typing indicator immediately. Summarisation now runs
-                // in a background thread on the server, so the request path
-                // is fast and there is no need to artificially delay the
-                // typing dots. The "compacting" bar is shown afterwards
-                // based on the backend's `compacting` flag.
-                var typingEl = showTyping(msgArea);
+                // ── Show compacting bar every 10 messages ─────────────────
+                var msgCount = msgArea.querySelectorAll('.mcp-chatbot-msg.user, .mcp-chatbot-msg.assistant').length;
+                var isCompacting = msgCount > 0 && msgCount % summaryInterval === 0;
+
+                if (isCompacting) {
+                    showCompactingBar(msgArea);
+                }
+
+                // Hold the RPC result here until we are ready to display it
+                var pendingReply   = null;
+                var pendingError   = false;
+                var rpcDone        = false;
+                var typingEl       = null;
+
+                function displayReply() {
+                    if (typingEl) { typingEl.remove(); }
+                    if (pendingError) {
+                        appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
+                    } else {
+                        appendMessage(msgArea, 'assistant', pendingReply && pendingReply.reply
+                            ? pendingReply.reply
+                            : 'Sorry, I could not get a reply.');
+                        setEndSessionVisible(true);   // session now exists
+                    }
+                    sendBtn.disabled = false;
+                    input.focus();
+                }
+
+                // Show typing indicator — immediately if no compacting, after 5s if compacting
+                var typingDelay = isCompacting ? 5000 : 0;
+                setTimeout(function () {
+                    typingEl = showTyping(msgArea);
+                    // If RPC already finished while we were waiting, display immediately
+                    if (rpcDone) { displayReply(); }
+                }, typingDelay);
 
                 var payload = { message: text };
                 // Include session_token only for anonymous users
@@ -574,71 +468,26 @@
                     welcomeText = null;
                 }
 
-                function unlockSend() {
-                    sendBtn.disabled = false;
-                    updateSendVisibility();
-                    input.focus();
-                }
-
                 jsonRpc('/mcp_chatbot/message', payload)
                     .then(function (result) {
-                        if (typingEl) { typingEl.remove(); typingEl = null; }
-                        // Unlock only AFTER the typewriter finishes painting
-                        // the reply, so the user cannot fire a follow-up
-                        // mid-stream.
-                        streamMessageIntoBubble(
-                            msgArea,
-                            result && result.reply
-                                ? result.reply
-                                : 'Sorry, I could not get a reply.',
-                            unlockSend
-                        );
-                        setEndSessionVisible(true);   // session now exists
-                        // Backend tells us when it kicked off a background
-                        // summarisation. Show the bar as a non-blocking
-                        // status hint after the reply has already landed.
-                        if (result && result.compacting) {
-                            showCompactingBar(msgArea);
-                        }
+                        pendingReply = result;
                     })
                     .catch(function (err) {
-                        if (typingEl) { typingEl.remove(); typingEl = null; }
-                        appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
+                        pendingError = true;
                         console.error('[mcp_chatbot] RPC error:', err);
-                        // Error path: no streaming, so unlock immediately.
-                        unlockSend();
+                    })
+                    .finally(function () {
+                        rpcDone = true;
+                        // Only display if typing indicator is already visible
+                        // (i.e. the 5s compacting delay has already passed)
+                        if (typingEl) { displayReply(); }
                     });
             }
 
             sendBtn.addEventListener('click', sendMessage);
 
-            // ── Send button visibility (hide when input is empty) ─────
-            function updateSendVisibility() {
-                // Visibility tracks the input text, not the disabled
-                // state. While a request is in flight the button stays
-                // `disabled` (greyed-out via the :disabled CSS rule) but
-                // still appears as soon as the user types something, so
-                // they get clear feedback that their next message is
-                // queued up and ready to send once the bot finishes.
-                // The re-entrancy guard inside sendMessage() keeps the
-                // click itself a no-op.
-                if (input.value.trim().length > 0) {
-                    sendBtn.classList.remove('mcp-send-hidden');
-                } else {
-                    sendBtn.classList.add('mcp-send-hidden');
-                }
-            }
-            // Start hidden
-            sendBtn.classList.add('mcp-send-hidden');
-            input.addEventListener('input', updateSendVisibility);
-
             input.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
-                    // Always preventDefault to suppress any default Enter
-                    // behaviour (form submit, newline insertion). The
-                    // re-entrancy guard inside sendMessage() handles the
-                    // "still in flight" case — pressing Enter while the
-                    // bot is replying is a silent no-op.
                     e.preventDefault();
                     sendMessage();
                 }

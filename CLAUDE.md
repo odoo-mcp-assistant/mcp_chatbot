@@ -42,7 +42,7 @@ All runtime settings are stored in `ir.config_parameter` with the `mcp_chatbot.*
 | `mcp_chatbot.system_prompt` | Main chatbot system prompt |
 | `mcp_chatbot.rag_system_prompt` | System prompt for fact extraction LLM |
 | `mcp_chatbot.max_tool_rounds` | Agentic loop cap (default 5) |
-| `mcp_chatbot.summary_token_budget` | Approx. token count for the unsummarized tail before background summarisation kicks in (default 3000) |
+| `mcp_chatbot.summary_interval` | Messages before history summarisation (default 10) |
 | `mcp_chatbot.idle_timeout` | Minutes before idle session is closed (default 30) |
 
 ## Architecture
@@ -78,35 +78,6 @@ Browser widget (chatbot_widget.js)
 - **`services/embedding_service.py`** — fastembed (ONNX, no PyTorch) with model `BAAI/bge-small-en-v1.5`. Singleton per Odoo worker process.
 
 - **`services/fact_extractor.py`** — daemon thread per message; calls LLM to extract structured facts (JSON with `facts[].text` and `facts[].category`), then writes to ChromaDB via `memory_service` and mirrors into `mcp.chatbot.user.fact` using a fresh DB cursor (the original request cursor is already committed at this point).
-
-- **`services/summarizer.py`** — daemon thread per summarisation round; called from `chatbot_controller` once the unsummarized tail exceeds `mcp_chatbot.summary_token_budget`. Owns the structured summary schema (see "Structured summary" below), the LLM call, JSON validation/cap enforcement, and the write-back to `mcp.chatbot.session.history_summary` via a fresh DB cursor. Uses a per-worker in-flight guard (`_in_flight_sessions`) so a fast follow-up message can't kick off a duplicate thread for the same session. Also exposes `render_summary_for_prompt(stored)` — the controller calls this on every turn to turn the JSON-encoded summary back into a clean prose block before injecting it into the LLM context.
-
-### Structured summary (`history_summary`)
-
-`mcp.chatbot.session.history_summary` is a `Text` field, but its contents are a **JSON-encoded structured object** with a fixed schema. The schema is defined in `services/summarizer.py`:
-
-```json
-{
-  "_v": 1,
-  "current_goal": "string — one sentence",
-  "entities": {
-    "products":    [{"name": "...", "id": "...", "note": "..."}],
-    "orders":      [{"ref": "S00108", "status": "..."}],
-    "identifiers": {"email": "...", "phone": "..."}
-  },
-  "user_preferences":     ["..."],
-  "unresolved_questions": ["..."],
-  "recent_context":       "string — 1-2 sentences"
-}
-```
-
-Key properties:
-
-- **Hard size bound**: each list field has a per-field cap (`FIELD_CAPS` in `summarizer.py`). Caps are enforced in Python after every round, never trusted to the LLM. The schema *is* the size limit — the summary cannot grow unbounded.
-- **Surgical updates**: the LLM is asked to copy unchanged fields verbatim. `_merge_with_previous()` re-fills any field the LLM dropped from a sloppy partial response, so unchanged information is never silently lost.
-- **Backwards compat**: legacy prose summaries (anything that doesn't parse as JSON in our shape) are detected on read by `parse_summary()` and stuffed into `recent_context`. The next summarisation round structures them. No DB migration needed.
-- **Injection-time rendering**: the chatbot LLM never sees the JSON. `render_summary_for_prompt()` walks the dict and emits a `SUMMARY OF CONVERSATION SO FAR:` prose block (same shape as before, just bounded). The controller injects this as a `system` message exactly like it always did.
-- **Failure modes** (handled in Python, not the LLM): invalid JSON → leave session untouched and retry next round; missing keys → fill from defaults / previous summary; cap exceeded → drop oldest entries.
 
 ### Odoo models
 
