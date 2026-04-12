@@ -137,8 +137,8 @@
                                  id="chatbot_idle_timeout_setting">
                             <field name="chatbot_idle_timeout"/>
                         </setting>
-                        <setting string="Summary Interval"
-                                 help="Number of new messages after which the conversation history is summarized. Default is 10."
+                        <setting string="Summary Token Threshold"
+                                 help="Estimated token count of unsummarized messages before triggering history summarization. Default is 2000."
                                  id="chatbot_summary_interval_setting">
                             <field name="chatbot_summary_interval"/>
                         </setting>

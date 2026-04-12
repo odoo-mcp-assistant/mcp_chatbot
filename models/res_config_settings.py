@@ -114,9 +114,9 @@ class ResConfigSettings(models.TransientModel):
     )
 
     chatbot_summary_interval = fields.Integer(
-        string="Summary Interval (messages)",
+        string="Summary Token Threshold",
         config_parameter='mcp_chatbot.summary_interval',
-        default=10,
+        default=2000,
     )
 
     # ------------------------------------------------------------------ #

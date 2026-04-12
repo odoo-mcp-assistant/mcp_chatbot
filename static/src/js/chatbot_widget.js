@@ -8,7 +8,7 @@
      *    closed or when the user logs out (Odoo invalidates the session).
      *    This prevents cross-user contamination entirely.
      *
-     * 2. For logged‑in users, no token is stored. The session is identified
+     * 2. For logged-in users, no token is stored. The session is identified
      *    by the partner_id provided by the backend.
      *
      * 3. Chat history is fetched from the backend on every widget open,
@@ -25,20 +25,20 @@
         function getOdooUid() {
             // Make synchronous RPC call to backend to get the actual UID
             var result = null;
-            
+
             var xhr = new XMLHttpRequest();
             xhr.open('POST', '/mcp_chatbot/get_uid', false);
             xhr.setRequestHeader('Content-Type', 'application/json');
-            
+
             var payload = JSON.stringify({
                 jsonrpc: '2.0',
                 method: 'call',
                 id: Date.now(),
                 params: {}
             });
-            
+
             xhr.send(payload);
-            
+
             if (xhr.status === 200) {
                 try {
                     var response = JSON.parse(xhr.responseText);
@@ -75,7 +75,7 @@
         }
 
         function getSessionToken() {
-            // For logged‑in users, no token is used.
+            // For logged-in users, no token is used.
             if (uid !== '0') {
                 return null;
             }
@@ -118,15 +118,117 @@
         function appendMessage(container, role, text) {
             var bubble = document.createElement('div');
             bubble.className = 'mcp-chatbot-msg ' + role;
-            bubble.textContent = text;
+
+            if (role === 'assistant') {
+                var inner = document.createElement('div');
+                inner.className = 'mcp-assistant-inner';
+
+                var avatar = document.createElement('img');
+                avatar.className = 'mcp-assistant-avatar';
+                var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
+                avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+                avatar.alt = '';
+
+                var textSpan = document.createElement('span');
+                textSpan.className = 'mcp-assistant-text';
+                textSpan.textContent = text;
+
+                inner.appendChild(avatar);
+                inner.appendChild(textSpan);
+                bubble.appendChild(inner);
+            } else {
+                bubble.textContent = text;
+            }
+
             container.appendChild(bubble);
             container.scrollTop = container.scrollHeight;
         }
 
+        // Typewriter-style rendering for assistant replies. The full text
+        // already lives in JS memory by the time we call this — we're only
+        // *painting* it slowly to mimic real LLM streaming. No backend
+        // changes involved.
+        //
+        // Auto-scroll uses the standard "sticky bottom" pattern: we only
+        // re-scroll to the bottom while the user is already within
+        // STICK_THRESHOLD_PX of it. As soon as they scroll up to read
+        // earlier content, we stop hijacking their scroll position.
+        function streamMessageIntoBubble(container, text, onDone) {
+            var DELAY_MS = 15;
+            var STICK_THRESHOLD_PX = 50;
+
+            var bubble = document.createElement('div');
+            bubble.className = 'mcp-chatbot-msg assistant';
+
+            // Build inner flex wrapper with text span + avatar
+            var inner = document.createElement('div');
+            inner.className = 'mcp-assistant-inner';
+
+            var textSpan = document.createElement('span');
+            textSpan.className = 'mcp-assistant-text';
+
+            var avatar = document.createElement('img');
+            avatar.className = 'mcp-assistant-avatar';
+            var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
+            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+            avatar.alt = '';
+
+            inner.appendChild(avatar);
+            inner.appendChild(textSpan);
+            bubble.appendChild(inner);
+
+            var initialDistance =
+                container.scrollHeight - container.scrollTop - container.clientHeight;
+            var wasStickyOnEntry = initialDistance < STICK_THRESHOLD_PX;
+
+            container.appendChild(bubble);
+            if (wasStickyOnEntry) {
+                container.scrollTop = container.scrollHeight;
+            }
+
+            var i = 0;
+
+            function tick() {
+                if (i >= text.length) {
+                    if (onDone) { onDone(); }
+                    return;
+                }
+                var distanceFromBottom =
+                    container.scrollHeight - container.scrollTop - container.clientHeight;
+                var wasStickyToBottom = distanceFromBottom < STICK_THRESHOLD_PX;
+
+                textSpan.textContent += text.charAt(i);
+                i++;
+
+                if (wasStickyToBottom) {
+                    container.scrollTop = container.scrollHeight;
+                }
+                setTimeout(tick, DELAY_MS);
+            }
+            tick();
+        }
+
         function showTyping(container) {
             var indicator = document.createElement('div');
-            indicator.className = 'mcp-chatbot-msg typing';
-            indicator.textContent = 'Thinking...';
+            indicator.className = 'mcp-chatbot-msg assistant typing';
+
+            var inner = document.createElement('div');
+            inner.className = 'mcp-assistant-inner';
+
+            var avatar = document.createElement('img');
+            avatar.className = 'mcp-assistant-avatar';
+            var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
+            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+            avatar.alt = '';
+
+            var textSpan = document.createElement('span');
+            textSpan.className = 'mcp-assistant-text';
+            textSpan.textContent = 'Thinking...';
+
+            inner.appendChild(avatar);
+            inner.appendChild(textSpan);
+            indicator.appendChild(inner);
+
             container.appendChild(indicator);
             container.scrollTop = container.scrollHeight;
             return indicator;
@@ -161,9 +263,6 @@
             }
             jsonRpc('/mcp_chatbot/history', payload)
                 .then(function (result) {
-                    if (result && result.summary_interval) {
-                        summaryInterval = result.summary_interval;
-                    }
                     // If session is closed or not found, reset the token
                     if (!result || result.status === 'closed' || result.status === 'not_found') {
                         // Clear the old token and generate a new one
@@ -274,7 +373,6 @@
         // These are declared here so sendMessage can access them
         var sessionToken = null;
         var welcomeText  = null;
-        var summaryInterval = 10;   // default — overridden by backend response
 
         function initChatbot() {
             if (window.__mcpChatbotInit) { return; }
@@ -326,11 +424,18 @@
                 isOpen = true;
                 sessionStorage.setItem(OPEN_KEY, '1');
                 if (bubble) { bubble.classList.remove('mcp-bubble-hovered'); }
-                msgArea.innerHTML = '';
-                loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
-                    setEndSessionVisible(hasSession);
+                // Only refetch history when the message area is empty
+                // (first open of the tab, or after an explicit end-session).
+                // If there is already DOM content, it means the user just
+                // minimised — keep it as-is.
+                if (msgArea.children.length === 0) {
+                    loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
+                        setEndSessionVisible(hasSession);
+                        input.focus();
+                    });
+                } else {
                     input.focus();
-                });
+                }
             }
 
             function closeWindow() {
@@ -338,7 +443,10 @@
                 bubble.classList.remove('d-none');
                 isOpen = false;
                 sessionStorage.setItem(OPEN_KEY, '0');
-                msgArea.innerHTML = '';   // clear DOM — backend is source of truth
+                // Do NOT wipe msgArea here. The widget is just hidden via
+                // d-none — keeping the DOM intact means a mid-stream reply
+                // continues painting into the (hidden) bubble and the user
+                // sees the full conversation when they reopen.
             }
 
             bubble.addEventListener('click', function () {
@@ -349,28 +457,28 @@
                 closeBtn.addEventListener('click', closeWindow);
             }
 
-            // ── End session (with confirmation + rating) ─────────────                                    
-            var selectedRating = null;                                                                      
-            var faceBtns = confirmOverlay                                                                   
-                ? confirmOverlay.querySelectorAll('.mcp-chatbot-face')                                      
-                : [];                                                                                       
-            var feedbackArea = confirmOverlay                                                               
-                ? confirmOverlay.querySelector('.mcp-chatbot-feedback')                                     
-                : null;                                                                                     
-                                                                                                            
-            faceBtns.forEach(function (btn) {                                                               
-                btn.addEventListener('click', function () {                                                 
-                    faceBtns.forEach(function (b) { b.classList.remove('selected'); });                     
-                    btn.classList.add('selected');                                                          
-                    selectedRating = btn.getAttribute('data-rating');                         
-                });                                                                                         
+            // ── End session (with confirmation + rating) ─────────────
+            var selectedRating = null;
+            var faceBtns = confirmOverlay
+                ? confirmOverlay.querySelectorAll('.mcp-chatbot-face')
+                : [];
+            var feedbackArea = confirmOverlay
+                ? confirmOverlay.querySelector('.mcp-chatbot-feedback')
+                : null;
+
+            faceBtns.forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    faceBtns.forEach(function (b) { b.classList.remove('selected'); });
+                    btn.classList.add('selected');
+                    selectedRating = btn.getAttribute('data-rating');
+                });
             });
-            
+
             if (endSessionBtn && confirmOverlay) {
                 endSessionBtn.addEventListener('click', function () {
-                    // Reset state each time the dialog opens                                               
-                    selectedRating = null;                                                                  
-                    faceBtns.forEach(function (b) { b.classList.remove('selected'); });                     
+                    // Reset state each time the dialog opens
+                    selectedRating = null;
+                    faceBtns.forEach(function (b) { b.classList.remove('selected'); });
                     if (feedbackArea) { feedbackArea.value = ''; }
                     confirmOverlay.classList.remove('d-none');
                 });
@@ -385,12 +493,12 @@
                     if (sessionToken) {
                         payload.session_token = sessionToken;
                     }
-                    if (selectedRating !== null) {                                                          
-                        payload.rating = selectedRating;                                                    
-                    }                                                                                       
-                    if (feedbackArea && feedbackArea.value.trim()) {                                        
-                        payload.feedback = feedbackArea.value.trim();                                       
-                    }  
+                    if (selectedRating !== null) {
+                        payload.rating = selectedRating;
+                    }
+                    if (feedbackArea && feedbackArea.value.trim()) {
+                        payload.feedback = feedbackArea.value.trim();
+                    }
                     jsonRpc('/mcp_chatbot/close', payload)
                         .then(function () {
                             setEndSessionVisible(false);
@@ -414,48 +522,26 @@
 
             // ── Send message ──────────────────────────────────────────
             function sendMessage() {
+                // Re-entrancy guard. The send button stays disabled from
+                // the moment a request is fired until the typewriter has
+                // finished painting the reply, so any second click OR any
+                // Enter-keypress during that window is dropped here. The
+                // input itself stays editable so the user can type ahead.
+                //
+                // This also covers the offline case: updateStatus('offline')
+                // disables the send button, so sendMessage() short-circuits
+                // here without us having to special-case it.
+                if (sendBtn.disabled) { return; }
+
                 var text = input.value.trim();
                 if (!text) { return; }
 
                 appendMessage(msgArea, 'user', text);
                 input.value = '';
                 sendBtn.disabled = true;
+                updateSendVisibility();
 
-                // ── Show compacting bar every 10 messages ─────────────────
-                var msgCount = msgArea.querySelectorAll('.mcp-chatbot-msg.user, .mcp-chatbot-msg.assistant').length;
-                var isCompacting = msgCount > 0 && msgCount % summaryInterval === 0;
-
-                if (isCompacting) {
-                    showCompactingBar(msgArea);
-                }
-
-                // Hold the RPC result here until we are ready to display it
-                var pendingReply   = null;
-                var pendingError   = false;
-                var rpcDone        = false;
-                var typingEl       = null;
-
-                function displayReply() {
-                    if (typingEl) { typingEl.remove(); }
-                    if (pendingError) {
-                        appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
-                    } else {
-                        appendMessage(msgArea, 'assistant', pendingReply && pendingReply.reply
-                            ? pendingReply.reply
-                            : 'Sorry, I could not get a reply.');
-                        setEndSessionVisible(true);   // session now exists
-                    }
-                    sendBtn.disabled = false;
-                    input.focus();
-                }
-
-                // Show typing indicator — immediately if no compacting, after 5s if compacting
-                var typingDelay = isCompacting ? 5000 : 0;
-                setTimeout(function () {
-                    typingEl = showTyping(msgArea);
-                    // If RPC already finished while we were waiting, display immediately
-                    if (rpcDone) { displayReply(); }
-                }, typingDelay);
+                var typingEl = showTyping(msgArea);
 
                 var payload = { message: text };
                 // Include session_token only for anonymous users
@@ -468,26 +554,60 @@
                     welcomeText = null;
                 }
 
+                function unlockSend() {
+                    sendBtn.disabled = false;
+                    updateSendVisibility();
+                    input.focus();
+                }
+
                 jsonRpc('/mcp_chatbot/message', payload)
                     .then(function (result) {
-                        pendingReply = result;
+                        if (typingEl) { typingEl.remove(); typingEl = null; }
+
+                        var replyText = result && result.reply
+                            ? result.reply
+                            : 'Sorry, I could not get a reply.';
+
+                        // Show compacting bar when backend actually summarized
+                        if (result && result.summarized) {
+                            showCompactingBar(msgArea);
+                            setTimeout(function () {
+                                streamMessageIntoBubble(msgArea, replyText, unlockSend);
+                                setEndSessionVisible(true);
+                            }, 5000);
+                        } else {
+                            streamMessageIntoBubble(msgArea, replyText, unlockSend);
+                            setEndSessionVisible(true);
+                        }
                     })
                     .catch(function (err) {
-                        pendingError = true;
                         console.error('[mcp_chatbot] RPC error:', err);
-                    })
-                    .finally(function () {
-                        rpcDone = true;
-                        // Only display if typing indicator is already visible
-                        // (i.e. the 5s compacting delay has already passed)
-                        if (typingEl) { displayReply(); }
+                        if (typingEl) { typingEl.remove(); }
+                        appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
+                        unlockSend();
                     });
             }
 
             sendBtn.addEventListener('click', sendMessage);
 
+            // ── Send button visibility (hide when input is empty) ─────
+            function updateSendVisibility() {
+                if (input.value.trim().length > 0) {
+                    sendBtn.classList.remove('mcp-send-hidden');
+                } else {
+                    sendBtn.classList.add('mcp-send-hidden');
+                }
+            }
+            // Start hidden
+            sendBtn.classList.add('mcp-send-hidden');
+            input.addEventListener('input', updateSendVisibility);
+
             input.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
+                    // Always preventDefault to suppress any default Enter
+                    // behaviour (form submit, newline insertion). The
+                    // re-entrancy guard inside sendMessage() handles the
+                    // "still in flight" case.
                     e.preventDefault();
                     sendMessage();
                 }

@@ -39,11 +39,11 @@
                         </div>
                     </div>
                     <div class="mcp-chatbot-header-actions">
-                        <button class="mcp-chatbot-end-session" title="End session">
-                            <i class="fa fa-power-off"/>
-                        </button>
                         <button class="mcp-chatbot-close" title="Minimize">
                             <i class="fa fa-minus"/>
+                        </button>
+                        <button class="mcp-chatbot-end-session" title="End session">
+                            <i class="fa fa-times"/>
                         </button>
                     </div>
                 </div>
@@ -51,22 +51,23 @@
                 <!-- End session confirmation overlay -->
                 <div class="mcp-chatbot-confirm-overlay d-none">
                     <div class="mcp-chatbot-confirm-dialog">
-                        <p>How was your experience?</p>                                                      
-                        <div class="mcp-chatbot-rating-faces">                                               
+                        <p>How was your experience?</p>
+                        <div class="mcp-chatbot-confirm-subtitle">Your feedback helps us improve</div>
+                        <div class="mcp-chatbot-rating-faces">
                             <button class="mcp-chatbot-face mcp-face-bad" data-rating="bad" title="Bad">
                                 <i class="fa fa-frown-o"/>
                             </button>
                             <button class="mcp-chatbot-face mcp-face-neutral" data-rating="neutral" title="Neutral">
                                 <i class="fa fa-meh-o"/>
                             </button>
-                            <button class="mcp-chatbot-face mcp-face-good" data-rating="good" title="Good">    
-                                <i class="fa fa-smile-o"/>                                                   
-                            </button>                                                                        
-                        </div>                                                                               
-                        <textarea class="mcp-chatbot-feedback" placeholder="Leave a comment (optional)..." rows="3"/>
+                            <button class="mcp-chatbot-face mcp-face-good" data-rating="good" title="Good">
+                                <i class="fa fa-smile-o"/>
+                            </button>
+                        </div>
+                        <textarea class="mcp-chatbot-feedback" placeholder="Tell us more (optional)..." rows="4"/>
                         <div class="mcp-chatbot-confirm-actions">
-                            <button class="mcp-chatbot-confirm-yes">End Session</button>                     
                             <button class="mcp-chatbot-confirm-no">Cancel</button>
+                            <button class="mcp-chatbot-confirm-yes">End Session</button>
                         </div>
                     </div>
                 </div>

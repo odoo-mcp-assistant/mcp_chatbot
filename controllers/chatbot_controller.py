@@ -152,8 +152,8 @@ class MCPChatbotController(http.Controller):
             'content':    user_message,
         })
 
-        # ── Read summary interval from settings ──────────────────────────
-        summary_interval = int(self._get_param('mcp_chatbot.summary_interval', 10))
+        # ── Read summary token threshold from settings ────────────────────
+        summary_token_threshold = int(self._get_param('mcp_chatbot.summary_interval', 2000))
 
         # ── Build conversation history ───────────────────────────────────
         # IMPORTANT: _async_process_message() already appends the current
@@ -173,26 +173,31 @@ class MCPChatbotController(http.Controller):
         prior_count   = len(prior_history)
 
         unsummarized_count = prior_count - session.last_summarized_count
+        unsummarized_messages = (
+            prior_history[-unsummarized_count:]
+            if unsummarized_count > 0 else []
+        )
 
-        if unsummarized_count >= summary_interval:
-            messages_to_summarize = prior_history[-unsummarized_count:]
+        # Estimate tokens for unsummarized messages (~4 chars per token)
+        estimated_tokens = sum(
+            len(m.get('content', '')) // 4 for m in unsummarized_messages
+        )
+
+        did_summarize = False
+        if estimated_tokens >= summary_token_threshold:
             summary_prefix = []
             if session.history_summary:
                 summary_prefix = [{
                     'role':    'system',
                     'content': f'Previous summary to extend: {session.history_summary}',
                 }]
-            new_summary = mcp_service.summarize_history(summary_prefix + messages_to_summarize)
+            new_summary = mcp_service.summarize_history(summary_prefix + unsummarized_messages)
             session.sudo().write({
                 'history_summary':       new_summary,
                 'last_summarized_count': prior_count,
             })
-            unsummarized_count = 0
-
-        unsummarized_messages = (
-            prior_history[-unsummarized_count:]
-            if unsummarized_count > 0 else []
-        )
+            unsummarized_messages = []
+            did_summarize = True
 
         # Only inject the summary block when a summary actually exists,
         # otherwise the LLM misreads the raw messages after it as summarised content.
@@ -345,7 +350,7 @@ class MCPChatbotController(http.Controller):
             except Exception as exc:
                 _logger.error('mcp_chatbot: fact extraction trigger failed: %s', exc)
 
-        return {'reply': ai_reply}
+        return {'reply': ai_reply, 'summarized': did_summarize}
 
     # ------------------------------------------------------------------ #
     # POST /mcp_chatbot/info                                               #
@@ -415,7 +420,7 @@ class MCPChatbotController(http.Controller):
         For anonymous users, the session is identified by the provided token.
 
         Returns:
-            { "status": "open",      "messages": [...], "summary_interval": N }
+            { "status": "open",      "messages": [...] }
             { "status": "closed",    "messages": [] }
             { "status": "not_found", "messages": [] }
         """
@@ -443,7 +448,6 @@ class MCPChatbotController(http.Controller):
             return {
                 'status': 'open',
                 'messages': messages,
-                'summary_interval': int(self._get_param('mcp_chatbot.summary_interval', 10)),
             }
 
         # ── Anonymous user: lookup by token ──────────────────────────────────
@@ -469,7 +473,6 @@ class MCPChatbotController(http.Controller):
         return {
             'status': 'open',
             'messages': messages,
-            'summary_interval': int(self._get_param('mcp_chatbot.summary_interval', 10)),
         }
 
     # ------------------------------------------------------------------ #

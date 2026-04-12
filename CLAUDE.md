@@ -42,7 +42,7 @@ All runtime settings are stored in `ir.config_parameter` with the `mcp_chatbot.*
 | `mcp_chatbot.system_prompt` | Main chatbot system prompt |
 | `mcp_chatbot.rag_system_prompt` | System prompt for fact extraction LLM |
 | `mcp_chatbot.max_tool_rounds` | Agentic loop cap (default 5) |
-| `mcp_chatbot.summary_interval` | Messages before history summarisation (default 10) |
+| `mcp_chatbot.summary_interval` | Estimated token threshold before history summarisation (default 2000) |
 | `mcp_chatbot.idle_timeout` | Minutes before idle session is closed (default 30) |
 
 ## Architecture
