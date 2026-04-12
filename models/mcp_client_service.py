@@ -410,14 +410,19 @@ class MCPClientService(models.AbstractModel):
 
         client = _get_sync_client(settings['api_key'], settings['base_url'])
 
+        formatted = "\n".join(
+            f"[{m['role'].upper()}]: {m['content']}" for m in history
+        )
+
         messages = [
             {
                 "role": "system",
                 "content": (
                     "You are a conversation summarizer. "
-                    "Given a chat history, produce a concise summary that preserves "
+                    "Produce a single concise standalone summary that preserves "
                     "all important context: key questions asked, decisions made, "
                     "products or data mentioned, and the current state of the conversation. "
+                    "Replace any previous summary entirely — do not append to it. "
                     "CRITICAL: Always preserve exact product names, order references "
                     "(e.g. S00108), email addresses, prices, and any technical identifiers "
                     "exactly as they appear — never paraphrase or rename them. "
@@ -426,7 +431,7 @@ class MCPClientService(models.AbstractModel):
             },
             {
                 "role": "user",
-                "content": f"Please summarize this conversation history:\n\n{history}",
+                "content": f"Please summarize this conversation history:\n\n{formatted}",
             },
         ]
 

@@ -189,7 +189,12 @@ class MCPChatbotController(http.Controller):
             if session.history_summary:
                 summary_prefix = [{
                     'role':    'system',
-                    'content': f'Previous summary to extend: {session.history_summary}',
+                    'content': (
+                        'Here is the previous summary for context — produce a NEW '
+                        'standalone summary that incorporates both this and the new '
+                        'messages below. Do NOT just append to it:\n\n'
+                        f'{session.history_summary}'
+                    ),
                 }]
             new_summary = mcp_service.summarize_history(summary_prefix + unsummarized_messages)
             session.sudo().write({
