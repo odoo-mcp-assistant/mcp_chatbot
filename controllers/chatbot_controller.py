@@ -260,7 +260,10 @@ class MCPChatbotController(http.Controller):
                 memory_service = _get_memory_service()
                 memories = memory_service.retrieve_memories(user_id, user_message, n_results=5)
                 if memories:
-                    memory_context = "LONG-TERM MEMORY — facts known about this user:\n"
+                    memory_context = (
+                        "USER PREFERENCES (personal taste and history — NOT inventory, "
+                        "NOT current product data; never cite these as products we sell):\n"
+                    )
                     memory_context += "\n".join(f"- {m}" for m in memories)
                     conversation_history = [
                         {'role': 'system', 'content': memory_context}

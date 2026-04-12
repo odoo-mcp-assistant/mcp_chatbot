@@ -56,7 +56,6 @@ def _get_sync_client(api_key, base_url) -> OpenAI:
 AUTH_REQUIRED_TOOLS = {
     'get_orders',
     'create_order',
-    'add_to_cart',
     'confirm_order',
     'cancel_order',
     'get_order_details',
@@ -423,9 +422,15 @@ class MCPClientService(models.AbstractModel):
                     "all important context: key questions asked, decisions made, "
                     "products or data mentioned, and the current state of the conversation. "
                     "Replace any previous summary entirely — do not append to it. "
-                    "CRITICAL: Always preserve exact product names, order references "
-                    "(e.g. S00108), email addresses, prices, and any technical identifiers "
-                    "exactly as they appear — never paraphrase or rename them. "
+                    "Preserve exact product names, order references (e.g. S00108), "
+                    "email addresses, and technical identifiers exactly as they appear — "
+                    "never paraphrase or rename them. "
+                    "CRITICAL — staleness rule: prices, stock levels, promotions, and "
+                    "availability are historical snapshots, not current values. "
+                    "When they appear, phrase them as 'previously shown', 'earlier quoted', "
+                    "or 'at the time'. Never state a price or stock level as if it is current. "
+                    "The summary is context about what the conversation covered, not "
+                    "authoritative inventory data — fresh values must come from a new tool call. "
                     "Be brief but complete."
                 ),
             },
