@@ -112,6 +112,128 @@
         }
 
         // ──────────────────────────────────────────────────────────────
+        // Markdown renderer
+        // Converts the LLM's markdown output to safe HTML.
+        // No external library — runs fully inline.
+        // ──────────────────────────────────────────────────────────────
+
+        function renderMarkdown(text) {
+            // 1. Escape raw HTML to prevent XSS
+            var escaped = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // 2. Stash code blocks with placeholders so later rules
+            //    (bold, italic, lists…) can't mangle their contents.
+            //    Fenced code blocks first, then inline code.
+            var codeStash = [];
+            function stash(html) {
+                var i = codeStash.length;
+                codeStash.push(html);
+                return '\x00CODE' + i + '\x00';
+            }
+
+            escaped = escaped.replace(/```[\w]*\n?([\s\S]*?)```/g, function (_, code) {
+                return stash('<pre class="mcp-md-pre"><code>' + code.trim() + '</code></pre>');
+            });
+            escaped = escaped.replace(/`([^`\n]+)`/g, function (_, code) {
+                return stash('<code class="mcp-md-code">' + code + '</code>');
+            });
+
+            // 3. Bold+italic (***text***) — line-bounded so we don't
+            //    swallow unrelated asterisks across paragraphs.
+            escaped = escaped.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+
+            // 4. Bold (**text**)
+            escaped = escaped.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+
+            // 5. Italic (*text*)
+            escaped = escaped.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+
+            // 6. Headings (### → h4, ## → h3, # → h2)
+            //    Cap at h2 so headings don't dwarf the chat bubble.
+            escaped = escaped.replace(/^### (.+)$/gm, '<h4 class="mcp-md-h">$1</h4>');
+            escaped = escaped.replace(/^## (.+)$/gm,  '<h3 class="mcp-md-h">$1</h3>');
+            escaped = escaped.replace(/^# (.+)$/gm,   '<h2 class="mcp-md-h">$1</h2>');
+
+            // 7. Horizontal rule (--- or ***)
+            escaped = escaped.replace(/^[-*]{3,}$/gm, '<hr class="mcp-md-hr">');
+
+            // 8. Unordered lists (- item or * item)
+            //    Group consecutive list lines into a single <ul>
+            escaped = escaped.replace(/((?:^[ \t]*[-*][ \t]+.+\n?)+)/gm, function (block) {
+                var items = block.trim().split(/\n/).map(function (line) {
+                    return '<li>' + line.replace(/^[ \t]*[-*][ \t]+/, '') + '</li>';
+                });
+                return '<ul class="mcp-md-ul">' + items.join('') + '</ul>';
+            });
+
+            // 9. Ordered lists (1. item)
+            escaped = escaped.replace(/((?:^[ \t]*\d+\.[ \t]+.+\n?)+)/gm, function (block) {
+                var items = block.trim().split(/\n/).map(function (line) {
+                    return '<li>' + line.replace(/^[ \t]*\d+\.[ \t]+/, '') + '</li>';
+                });
+                return '<ol class="mcp-md-ol">' + items.join('') + '</ol>';
+            });
+
+            // 10. Blockquote (> text)
+            escaped = escaped.replace(/^&gt; (.+)$/gm, '<blockquote class="mcp-md-blockquote">$1</blockquote>');
+
+            // 11. GFM tables
+            //     | h1 | h2 |
+            //     |----|----|
+            //     | a  | b  |
+            escaped = escaped.replace(
+                /^\|(.+)\|[ \t]*\n\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*\n((?:\|.*\|[ \t]*\n?)+)/gm,
+                function (_, headerLine, bodyBlock) {
+                    function splitRow(row) {
+                        return row.replace(/^\|/, '').replace(/\|[ \t]*$/, '').split('|').map(function (c) {
+                            return c.trim();
+                        });
+                    }
+                    var headers = splitRow(headerLine);
+                    var head = '<tr>' + headers.map(function (h) {
+                        return '<th>' + h + '</th>';
+                    }).join('') + '</tr>';
+                    var rows = bodyBlock.trim().split('\n').map(function (line) {
+                        var cells = splitRow(line);
+                        return '<tr>' + cells.map(function (c) {
+                            return '<td>' + c + '</td>';
+                        }).join('') + '</tr>';
+                    }).join('');
+                    return '<table class="mcp-md-table"><thead>' + head +
+                           '</thead><tbody>' + rows + '</tbody></table>';
+                }
+            );
+
+            // 12. Links [text](url) — http(s)/mailto only, blocks javascript: injection
+            escaped = escaped.replace(
+                /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+                '<a class="mcp-md-link" href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+            );
+
+            // 13. Paragraphs — wrap double-newline-separated blocks that are
+            //     not already block-level HTML elements
+            var blocks = escaped.split(/\n{2,}/);
+            escaped = blocks.map(function (block) {
+                var trimmed = block.trim();
+                if (!trimmed) { return ''; }
+                // Already a block element — leave untouched
+                if (/^<(h[2-4]|ul|ol|pre|blockquote|hr|table)/.test(trimmed)) { return trimmed; }
+                // Single newlines inside a paragraph become <br>
+                return '<p class="mcp-md-p">' + trimmed.replace(/\n/g, '<br>') + '</p>';
+            }).join('');
+
+            // 14. Restore stashed code blocks/inline code
+            escaped = escaped.replace(/\x00CODE(\d+)\x00/g, function (_, i) {
+                return codeStash[parseInt(i, 10)];
+            });
+
+            return escaped;
+        }
+
+        // ──────────────────────────────────────────────────────────────
         // DOM helpers
         // ──────────────────────────────────────────────────────────────
 
@@ -131,7 +253,7 @@
 
                 var textSpan = document.createElement('span');
                 textSpan.className = 'mcp-assistant-text';
-                textSpan.textContent = text;
+                textSpan.innerHTML = renderMarkdown(text);
 
                 inner.appendChild(avatar);
                 inner.appendChild(textSpan);
@@ -144,23 +266,22 @@
             container.scrollTop = container.scrollHeight;
         }
 
-        // Typewriter-style rendering for assistant replies. The full text
-        // already lives in JS memory by the time we call this — we're only
-        // *painting* it slowly to mimic real LLM streaming. No backend
-        // changes involved.
+        // Typewriter-style rendering for assistant replies.
+        //
+        // Strategy: render the full markdown → HTML once upfront, then
+        // stream the *rendered HTML* word-by-word using a hidden clone so
+        // we never paint a half-open HTML tag into the visible DOM.
         //
         // Auto-scroll uses the standard "sticky bottom" pattern: we only
-        // re-scroll to the bottom while the user is already within
-        // STICK_THRESHOLD_PX of it. As soon as they scroll up to read
-        // earlier content, we stop hijacking their scroll position.
+        // re-scroll while the user is already within STICK_THRESHOLD_PX of
+        // the bottom.
         function streamMessageIntoBubble(container, text, onDone) {
-            var DELAY_MS = 15;
+            var DELAY_MS = 18;
             var STICK_THRESHOLD_PX = 50;
 
             var bubble = document.createElement('div');
             bubble.className = 'mcp-chatbot-msg assistant';
 
-            // Build inner flex wrapper with text span + avatar
             var inner = document.createElement('div');
             inner.className = 'mcp-assistant-inner';
 
@@ -186,19 +307,33 @@
                 container.scrollTop = container.scrollHeight;
             }
 
+            // Render markdown → HTML once, then split into words so we
+            // stream whole words (safe for HTML tags) rather than raw chars.
+            var renderedHTML = renderMarkdown(text);
+            var words = renderedHTML.split(/(<[^>]+>|\s+)/);
+            // Filter to tokens that carry visible content or tags
+            words = words.filter(function (w) { return w.length > 0; });
+
             var i = 0;
+            var accumulated = '';
 
             function tick() {
-                if (i >= text.length) {
+                if (i >= words.length) {
+                    // Final render — make sure the full HTML is in place
+                    textSpan.innerHTML = renderedHTML;
                     if (onDone) { onDone(); }
                     return;
                 }
+
                 var distanceFromBottom =
                     container.scrollHeight - container.scrollTop - container.clientHeight;
                 var wasStickyToBottom = distanceFromBottom < STICK_THRESHOLD_PX;
 
-                textSpan.textContent += text.charAt(i);
+                accumulated += words[i];
                 i++;
+
+                // Paint accumulated tokens — browser parses HTML safely
+                textSpan.innerHTML = accumulated;
 
                 if (wasStickyToBottom) {
                     container.scrollTop = container.scrollHeight;
