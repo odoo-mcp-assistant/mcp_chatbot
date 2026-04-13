@@ -328,7 +328,11 @@ class MCPChatbotController(http.Controller):
                 if fact_model_id:
                     record = request.env['mcp.llm.model'].sudo().browse(int(fact_model_id))
                     if record.exists():
-                        fact_model_name = record.name
+                        fact_model_name = (
+                            f"{record.provider_id.name}/{record.name}"
+                            if record.provider_id
+                            else record.name
+                        )
                 
                 rag_system_prompt = param.get_param('mcp_chatbot.rag_system_prompt', '')
 

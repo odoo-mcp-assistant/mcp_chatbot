@@ -336,13 +336,17 @@ class MCPClientService(models.AbstractModel):
         system_prompt = param.get_param('mcp_chatbot.system_prompt', '')
         max_tool_rounds = int(param.get_param('mcp_chatbot.max_tool_rounds', 5))
 
-        # Resolve LLM model name from Many2one
+        # Resolve LLM model name from Many2one (combine provider/model if provider set)
         model_name = ''
         llm_model_id = param.get_param('mcp_chatbot.llm_model_id')
         if llm_model_id:
             record = LlmModel.browse(int(llm_model_id))
             if record.exists():
-                model_name = record.name
+                model_name = (
+                    f"{record.provider_id.name}/{record.name}"
+                    if record.provider_id
+                    else record.name
+                )
 
         return {
             'api_key':        api_key,
@@ -394,7 +398,11 @@ class MCPClientService(models.AbstractModel):
         if summary_model_id:
             record = LlmModel.browse(int(summary_model_id))
             if record.exists():
-                model_name = record.name
+                model_name = (
+                    f"{record.provider_id.name}/{record.name}"
+                    if record.provider_id
+                    else record.name
+                )
         if not model_name:
             model_name = main['model_name']
 

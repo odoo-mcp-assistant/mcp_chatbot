@@ -140,15 +140,24 @@ class ResConfigSettings(models.TransientModel):
 
     @api.onchange('chatbot_llm_provider_id')
     def _onchange_llm_provider(self):
-        self.chatbot_llm_model_id = False
+        if (self.chatbot_llm_model_id
+                and self.chatbot_llm_provider_id
+                and self.chatbot_llm_model_id.provider_id != self.chatbot_llm_provider_id):
+            self.chatbot_llm_model_id = False
 
     @api.onchange('chatbot_fact_extraction_provider_id')
     def _onchange_fact_extraction_provider(self):
-        self.chatbot_fact_extraction_model_id = False
+        if (self.chatbot_fact_extraction_model_id
+                and self.chatbot_fact_extraction_provider_id
+                and self.chatbot_fact_extraction_model_id.provider_id != self.chatbot_fact_extraction_provider_id):
+            self.chatbot_fact_extraction_model_id = False
 
     @api.onchange('chatbot_summary_provider_id')
     def _onchange_summary_provider(self):
-        self.chatbot_summary_model_id = False
+        if (self.chatbot_summary_model_id
+                and self.chatbot_summary_provider_id
+                and self.chatbot_summary_model_id.provider_id != self.chatbot_summary_provider_id):
+            self.chatbot_summary_model_id = False
 
     # ------------------------------------------------------------------ #
     # get_values / set_values for Many2one fields                         #

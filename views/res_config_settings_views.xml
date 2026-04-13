@@ -57,20 +57,17 @@
                             <field name="chatbot_llm_model_id"
                                    domain="[('provider_id', '=', chatbot_llm_provider_id)]"/>
                         </setting>
+                        <setting string="System Prompt"
+                                 help="The system prompt sent to the LLM on every conversation."
+                                 id="chatbot_system_prompt_setting">
+                            <field name="chatbot_system_prompt"
+                                   widget="text"
+                                   style="width: 100%;"/>
+                        </setting>
                         <setting string="Max Tool Rounds"
                                  help="Maximum number of tool-calling rounds per message. Default is 5."
                                  id="chatbot_max_tool_rounds_setting">
                             <field name="chatbot_max_tool_rounds"/>
-                        </setting>
-                        <setting id="chatbot_system_prompt_setting"
-                                 colspan="2">
-                            <div class="col-12">
-                                <label for="chatbot_system_prompt" string="System Prompt"/>
-                                <div class="text-muted">The system prompt sent to the LLM on every conversation.</div>
-                                <field name="chatbot_system_prompt"
-                                       widget="text"
-                                       style="width: 100%;"/>
-                            </div>
                         </setting>
                     </block>
 
@@ -87,16 +84,6 @@
                                  id="chatbot_fact_extraction_base_url_setting">
                             <field name="chatbot_fact_extraction_base_url" style="width: 100%;"/>
                         </setting>
-                        <setting id="chatbot_rag_system_prompt_setting"
-                                 colspan="2">
-                            <div class="col-12">
-                                <label for="chatbot_rag_system_prompt" string="RAG System Prompt"/>
-                                <div class="text-muted">System prompt used by the fact extraction model.</div>
-                                <field name="chatbot_rag_system_prompt"
-                                    widget="text"
-                                    style="width: 100%;"/>
-                            </div>
-                        </setting>
                         <setting string="Fact Extraction Provider"
                                  help="Filter the fact extraction model list to a specific provider."
                                  id="chatbot_fact_extraction_provider_setting">
@@ -107,6 +94,16 @@
                                  id="chatbot_fact_extraction_model_setting">
                             <field name="chatbot_fact_extraction_model_id"
                                    domain="[('provider_id', '=', chatbot_fact_extraction_provider_id)]"/>
+                        </setting>
+                        <setting string="RAG System Prompt"
+                                 help="System prompt used by the fact extraction model."
+                                 id="chatbot_rag_system_prompt_setting"
+                                 colspan="2">
+                            <div class="col-12">
+                                <field name="chatbot_rag_system_prompt"
+                                    widget="text"
+                                    style="width: 100%;"/>
+                            </div>
                         </setting>
                         
                     </block>
