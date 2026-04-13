@@ -118,8 +118,12 @@
         // ──────────────────────────────────────────────────────────────
 
         function renderMarkdown(text) {
+            // Normalise line endings so regexes using \n work regardless of
+            // what the LLM emitted on Windows/Mac tools paths.
+            var escaped = String(text || '').replace(/\r\n?/g, '\n');
+
             // 1. Escape raw HTML to prevent XSS
-            var escaped = text
+            escaped = escaped
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
@@ -141,35 +145,40 @@
                 return stash('<code class="mcp-md-code">' + code + '</code>');
             });
 
-            // 3. Bold+italic (***text***) — line-bounded so we don't
-            //    swallow unrelated asterisks across paragraphs.
-            escaped = escaped.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+            // 3. Bold+italic (***text***)
+            escaped = escaped.replace(/\*\*\*([^\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
 
-            // 4. Bold (**text**)
-            escaped = escaped.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+            // 4. Bold (**text**) — allow any non-newline content so
+            //    nested italics like **foo *bar* baz** don't break bold.
+            escaped = escaped.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
 
-            // 5. Italic (*text*)
-            escaped = escaped.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+            // 5. Italic (*text*) — still non-nested, line-bounded
+            escaped = escaped.replace(/(^|[^*\w])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
 
-            // 6. Headings (### → h4, ## → h3, # → h2)
-            //    Cap at h2 so headings don't dwarf the chat bubble.
-            escaped = escaped.replace(/^### (.+)$/gm, '<h4 class="mcp-md-h">$1</h4>');
-            escaped = escaped.replace(/^## (.+)$/gm,  '<h3 class="mcp-md-h">$1</h3>');
-            escaped = escaped.replace(/^# (.+)$/gm,   '<h2 class="mcp-md-h">$1</h2>');
+            // 6. Strikethrough (~~text~~)
+            escaped = escaped.replace(/~~([^\n]+?)~~/g, '<del>$1</del>');
 
-            // 7. Horizontal rule (--- or ***)
-            escaped = escaped.replace(/^[-*]{3,}$/gm, '<hr class="mcp-md-hr">');
+            // 7. Headings (# … ######). Cap visual size via CSS.
+            escaped = escaped.replace(/^###### (.+?)\s*$/gm, '<h6 class="mcp-md-h">$1</h6>');
+            escaped = escaped.replace(/^##### (.+?)\s*$/gm,  '<h5 class="mcp-md-h">$1</h5>');
+            escaped = escaped.replace(/^#### (.+?)\s*$/gm,   '<h4 class="mcp-md-h">$1</h4>');
+            escaped = escaped.replace(/^### (.+?)\s*$/gm,    '<h4 class="mcp-md-h">$1</h4>');
+            escaped = escaped.replace(/^## (.+?)\s*$/gm,     '<h3 class="mcp-md-h">$1</h3>');
+            escaped = escaped.replace(/^# (.+?)\s*$/gm,      '<h2 class="mcp-md-h">$1</h2>');
 
-            // 8. Unordered lists (- item or * item)
-            //    Group consecutive list lines into a single <ul>
-            escaped = escaped.replace(/((?:^[ \t]*[-*][ \t]+.+\n?)+)/gm, function (block) {
+            // 8. Horizontal rule — tolerate leading/trailing whitespace and
+            //    the `___` variant alongside `---` / `***`.
+            escaped = escaped.replace(/^[ \t]*(?:[-*_][ \t]*){3,}[ \t]*$/gm, '<hr class="mcp-md-hr">');
+
+            // 9. Unordered lists (- item or * item)
+            escaped = escaped.replace(/((?:^[ \t]*[-*+][ \t]+.+\n?)+)/gm, function (block) {
                 var items = block.trim().split(/\n/).map(function (line) {
-                    return '<li>' + line.replace(/^[ \t]*[-*][ \t]+/, '') + '</li>';
+                    return '<li>' + line.replace(/^[ \t]*[-*+][ \t]+/, '') + '</li>';
                 });
                 return '<ul class="mcp-md-ul">' + items.join('') + '</ul>';
             });
 
-            // 9. Ordered lists (1. item)
+            // 10. Ordered lists (1. item)
             escaped = escaped.replace(/((?:^[ \t]*\d+\.[ \t]+.+\n?)+)/gm, function (block) {
                 var items = block.trim().split(/\n/).map(function (line) {
                     return '<li>' + line.replace(/^[ \t]*\d+\.[ \t]+/, '') + '</li>';
@@ -177,18 +186,23 @@
                 return '<ol class="mcp-md-ol">' + items.join('') + '</ol>';
             });
 
-            // 10. Blockquote (> text)
-            escaped = escaped.replace(/^&gt; (.+)$/gm, '<blockquote class="mcp-md-blockquote">$1</blockquote>');
+            // 11. Blockquote — merge consecutive `> …` lines into one block
+            escaped = escaped.replace(/((?:^&gt;[ \t]?.*\n?)+)/gm, function (block) {
+                var inner = block.trim().split(/\n/).map(function (line) {
+                    return line.replace(/^&gt;[ \t]?/, '');
+                }).join('<br>');
+                return '<blockquote class="mcp-md-blockquote">' + inner + '</blockquote>';
+            });
 
-            // 11. GFM tables
+            // 12. GFM tables
             //     | h1 | h2 |
             //     |----|----|
             //     | a  | b  |
             escaped = escaped.replace(
-                /^\|(.+)\|[ \t]*\n\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*\n((?:\|.*\|[ \t]*\n?)+)/gm,
+                /^[ \t]*\|(.+)\|[ \t]*\n[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*\n((?:[ \t]*\|.*\|[ \t]*\n?)+)/gm,
                 function (_, headerLine, bodyBlock) {
                     function splitRow(row) {
-                        return row.replace(/^\|/, '').replace(/\|[ \t]*$/, '').split('|').map(function (c) {
+                        return row.replace(/^[ \t]*\|/, '').replace(/\|[ \t]*$/, '').split('|').map(function (c) {
                             return c.trim();
                         });
                     }
@@ -207,25 +221,31 @@
                 }
             );
 
-            // 12. Links [text](url) — http(s)/mailto only, blocks javascript: injection
+            // 13. Links [text](url) — http(s)/mailto only, blocks javascript: injection
             escaped = escaped.replace(
                 /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
                 '<a class="mcp-md-link" href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
             );
 
-            // 13. Paragraphs — wrap double-newline-separated blocks that are
+            // 14. Autolinks — bare URLs that aren't already inside an <a>
+            escaped = escaped.replace(
+                /(^|[^"'>=])\b(https?:\/\/[^\s<)]+)/g,
+                '$1<a class="mcp-md-link" href="$2" target="_blank" rel="noopener noreferrer">$2</a>'
+            );
+
+            // 15. Paragraphs — wrap double-newline-separated blocks that are
             //     not already block-level HTML elements
             var blocks = escaped.split(/\n{2,}/);
             escaped = blocks.map(function (block) {
                 var trimmed = block.trim();
                 if (!trimmed) { return ''; }
                 // Already a block element — leave untouched
-                if (/^<(h[2-4]|ul|ol|pre|blockquote|hr|table)/.test(trimmed)) { return trimmed; }
+                if (/^<(h[2-6]|ul|ol|pre|blockquote|hr|table)/.test(trimmed)) { return trimmed; }
                 // Single newlines inside a paragraph become <br>
                 return '<p class="mcp-md-p">' + trimmed.replace(/\n/g, '<br>') + '</p>';
             }).join('');
 
-            // 14. Restore stashed code blocks/inline code
+            // 16. Restore stashed code blocks/inline code
             escaped = escaped.replace(/\x00CODE(\d+)\x00/g, function (_, i) {
                 return codeStash[parseInt(i, 10)];
             });

@@ -440,7 +440,10 @@
 .mcp-assistant-text {
     flex: 1;
     word-break: break-word;
-    white-space: pre-wrap;
+    /* Markdown renderer emits explicit <br>/<p>/<hr> for line breaks, so
+       the raw \n characters between block tags must NOT render as
+       whitespace — otherwise tables/headings get pushed around. */
+    white-space: normal;
 }
 
 /* Typing indicator — same horizontal alignment as assistant messages
@@ -632,6 +635,10 @@
 .mcp-assistant-text h2.mcp-md-h { font-size: 18px; }
 .mcp-assistant-text h3.mcp-md-h { font-size: 16px; }
 .mcp-assistant-text h4.mcp-md-h { font-size: 15px; }
+.mcp-assistant-text h5.mcp-md-h { font-size: 14px; }
+.mcp-assistant-text h6.mcp-md-h { font-size: 13px; color: #333; }
+
+.mcp-assistant-text del { color: #888; text-decoration: line-through; }
 
 .mcp-assistant-text .mcp-md-ul,
 .mcp-assistant-text .mcp-md-ol {
