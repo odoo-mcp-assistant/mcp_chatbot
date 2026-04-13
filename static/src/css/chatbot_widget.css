@@ -495,7 +495,7 @@
     display: flex;
     align-items: center;
     gap: 0;
-    padding: 10px 12px;
+    padding: 10px 12px 4px;
     border-top: none;
     background: #ffffff;
 }
@@ -567,6 +567,21 @@
 .mcp-chatbot-send:disabled {
     background: #99CCCC;
     cursor: not-allowed;
+}
+
+/* ── AI disclaimer (under input) ──────────────────────────────── */
+.mcp-chatbot-disclaimer {
+    text-align: center;
+    font-size: 11px;
+    color: #8e8ea0;
+    padding: 0 12px 4px;
+    line-height: 1.35;
+    background: #ffffff;
+    flex-shrink: 0;
+    user-select: none;
+}
+.mcp-chatbot-disclaimer #mcp_chatbot_disclaimer_name {
+    font-weight: 500;
 }
 
 /* ── Mobile responsive ────────────────────────────────────────── */

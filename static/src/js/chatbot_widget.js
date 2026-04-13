@@ -478,6 +478,8 @@
             if (titleEl && name) { titleEl.textContent = name; }
             var tooltipNameEl = document.getElementById('mcp_chatbot_tooltip_name');
             if (tooltipNameEl && name) { tooltipNameEl.textContent = name; }
+            var disclaimerNameEl = document.getElementById('mcp_chatbot_disclaimer_name');
+            if (disclaimerNameEl && name) { disclaimerNameEl.textContent = name; }
         }
 
         function updateStatus(status) {
