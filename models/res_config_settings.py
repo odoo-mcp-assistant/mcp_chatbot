@@ -1,4 +1,4 @@
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 class ResConfigSettings(models.TransientModel):
@@ -35,6 +35,11 @@ class ResConfigSettings(models.TransientModel):
         config_parameter='mcp_chatbot.base_url',
     )
 
+    chatbot_llm_provider_id = fields.Many2one(
+        comodel_name='mcp.llm.provider',
+        string="LLM Provider",
+    )
+
     chatbot_llm_model_id = fields.Many2one(
         comodel_name='mcp.llm.model',
         string="LLM Model",
@@ -54,6 +59,11 @@ class ResConfigSettings(models.TransientModel):
     # ------------------------------------------------------------------ #
     # RAG                                                                  #
     # ------------------------------------------------------------------ #
+
+    chatbot_fact_extraction_provider_id = fields.Many2one(
+        comodel_name='mcp.llm.provider',
+        string="Fact Extraction Provider",
+    )
 
     chatbot_fact_extraction_model_id = fields.Many2one(
         comodel_name='mcp.llm.model',
@@ -78,6 +88,11 @@ class ResConfigSettings(models.TransientModel):
     # ------------------------------------------------------------------ #
     # Summary                                                              #
     # ------------------------------------------------------------------ #
+
+    chatbot_summary_provider_id = fields.Many2one(
+        comodel_name='mcp.llm.provider',
+        string="Summary Provider",
+    )
 
     chatbot_summary_model_id = fields.Many2one(
         comodel_name='mcp.llm.model',
@@ -120,6 +135,22 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ------------------------------------------------------------------ #
+    # Onchange: clear model when provider changes                         #
+    # ------------------------------------------------------------------ #
+
+    @api.onchange('chatbot_llm_provider_id')
+    def _onchange_llm_provider(self):
+        self.chatbot_llm_model_id = False
+
+    @api.onchange('chatbot_fact_extraction_provider_id')
+    def _onchange_fact_extraction_provider(self):
+        self.chatbot_fact_extraction_model_id = False
+
+    @api.onchange('chatbot_summary_provider_id')
+    def _onchange_summary_provider(self):
+        self.chatbot_summary_model_id = False
+
+    # ------------------------------------------------------------------ #
     # get_values / set_values for Many2one fields                         #
     # ------------------------------------------------------------------ #
 
@@ -127,6 +158,14 @@ class ResConfigSettings(models.TransientModel):
         res = super().get_values()
         param = self.env['ir.config_parameter'].sudo()
         LlmModel = self.env['mcp.llm.model']
+        LlmProvider = self.env['mcp.llm.provider']
+
+        # LLM provider
+        llm_provider_id = param.get_param('mcp_chatbot.llm_provider_id')
+        if llm_provider_id and LlmProvider.browse(int(llm_provider_id)).exists():
+            res['chatbot_llm_provider_id'] = int(llm_provider_id)
+        else:
+            res['chatbot_llm_provider_id'] = False
 
         # LLM model
         llm_model_id = param.get_param('mcp_chatbot.llm_model_id')
@@ -135,12 +174,26 @@ class ResConfigSettings(models.TransientModel):
         else:
             res['chatbot_llm_model_id'] = False
 
+        # Fact extraction provider
+        fact_provider_id = param.get_param('mcp_chatbot.fact_extraction_provider_id')
+        if fact_provider_id and LlmProvider.browse(int(fact_provider_id)).exists():
+            res['chatbot_fact_extraction_provider_id'] = int(fact_provider_id)
+        else:
+            res['chatbot_fact_extraction_provider_id'] = False
+
         # Fact extraction model
         fact_model_id = param.get_param('mcp_chatbot.fact_extraction_model_id')
         if fact_model_id and LlmModel.browse(int(fact_model_id)).exists():
             res['chatbot_fact_extraction_model_id'] = int(fact_model_id)
         else:
             res['chatbot_fact_extraction_model_id'] = False
+
+        # Summary provider
+        summary_provider_id = param.get_param('mcp_chatbot.summary_provider_id')
+        if summary_provider_id and LlmProvider.browse(int(summary_provider_id)).exists():
+            res['chatbot_summary_provider_id'] = int(summary_provider_id)
+        else:
+            res['chatbot_summary_provider_id'] = False
 
         # Summary model
         summary_model_id = param.get_param('mcp_chatbot.summary_model_id')
@@ -155,12 +208,24 @@ class ResConfigSettings(models.TransientModel):
         super().set_values()
         param = self.env['ir.config_parameter'].sudo()
         param.set_param(
+            'mcp_chatbot.llm_provider_id',
+            self.chatbot_llm_provider_id.id or False,
+        )
+        param.set_param(
             'mcp_chatbot.llm_model_id',
             self.chatbot_llm_model_id.id or False,
         )
         param.set_param(
+            'mcp_chatbot.fact_extraction_provider_id',
+            self.chatbot_fact_extraction_provider_id.id or False,
+        )
+        param.set_param(
             'mcp_chatbot.fact_extraction_model_id',
             self.chatbot_fact_extraction_model_id.id or False,
+        )
+        param.set_param(
+            'mcp_chatbot.summary_provider_id',
+            self.chatbot_summary_provider_id.id or False,
         )
         param.set_param(
             'mcp_chatbot.summary_model_id',
