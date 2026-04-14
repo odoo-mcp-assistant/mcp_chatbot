@@ -102,12 +102,10 @@ class MCPChatbotController(http.Controller):
         website=True,
         csrf=False,
     )
-    def receive_message(self, message: str, session_token: str = None, welcome: str = None, **kwargs):
+    def receive_message(self, message: str, session_token: str = None, **kwargs):
         """
         Receive a user message. Creates the session on the first real
-        user message (lazy creation). If 'welcome' is provided it means
-        this is the first message — persist the welcome text first so
-        the LLM has full context.
+        user message (lazy creation).
         """
 
         if not message or not message.strip():
@@ -136,14 +134,6 @@ class MCPChatbotController(http.Controller):
         effective_partner_id = partner_id or (session.partner_id.id if session.partner_id else None)
 
         Message = request.env['mcp.chatbot.message'].sudo()
-
-        # ── Persist welcome as first record if this is the first message ─
-        if welcome and len(session.message_ids) == 0:
-            Message.create({
-                'session_id': session.id,
-                'role':       'assistant',
-                'content':    welcome.strip(),
-            })
 
         # ── Persist user message ─────────────────────────────────────────
         Message.create({
@@ -377,41 +367,19 @@ class MCPChatbotController(http.Controller):
         csrf=False,
     )
     def info(self):
-        """Return static chatbot metadata used by the frontend on page load."""
+        """Return chatbot metadata + current user identity for the
+        frontend hero greeting."""
+        is_authenticated = not request.env.user._is_public()
+        first_name = ''
+        if is_authenticated:
+            full_name = (request.env.user.partner_id.name or '').strip()
+            first_name = full_name.split(' ')[0] if full_name else ''
         return {
-            'bot_name': self._get_param('mcp_chatbot.bot_name', 'AI Assistant'),
-            'status':   self._get_param('mcp_chatbot.status', 'online'),
+            'bot_name':         self._get_param('mcp_chatbot.bot_name', 'AI Assistant'),
+            'status':           self._get_param('mcp_chatbot.status', 'online'),
+            'is_authenticated': is_authenticated,
+            'first_name':       first_name,
         }
-
-    # ------------------------------------------------------------------ #
-    # POST /mcp_chatbot/welcome                                            #
-    # ------------------------------------------------------------------ #
-
-    @http.route(
-        '/mcp_chatbot/welcome',
-        type='json',
-        auth='public',
-        methods=['POST'],
-        website=True,
-        csrf=False,
-    )
-    def welcome(self):
-        bot_name = self._get_param('mcp_chatbot.bot_name', 'AI Assistant')
-
-        if not request.env.user._is_public():
-            partner_name = request.env.user.partner_id.name
-            welcome_msg = (
-                f"Hello {partner_name}! Welcome back. "
-                f"I'm {bot_name}, your AI assistant for home appliances and electronics. "
-                f"How can I help you today?"
-            )
-        else:
-            welcome_msg = (
-                f"Hello! I'm {bot_name}, your AI assistant for home appliances and electronics in Tunisia. "
-                f"How can I help you today?"
-            )
-
-        return {'welcome': welcome_msg}
 
     # ------------------------------------------------------------------ #
     # POST /mcp_chatbot/history                                            #

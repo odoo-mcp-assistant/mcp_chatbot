@@ -91,6 +91,38 @@
                     </div>
                 </div>
 
+                <!-- Suggestion chips — authenticated users -->
+                <div id="mcp_chatbot_suggestions_auth" class="mcp-chatbot-suggestions mcp-suggestions-auth">
+                    <button class="mcp-chatbot-suggestion" data-query="Show me my orders">
+                        <i class="fa fa-shopping-bag"/>
+                        <span>My orders</span>
+                    </button>
+                    <button class="mcp-chatbot-suggestion" data-query="Show me my invoices">
+                        <i class="fa fa-file-text-o"/>
+                        <span>My invoices</span>
+                    </button>
+                    <button class="mcp-chatbot-suggestion" data-query="Show me my unpaid invoices">
+                        <i class="fa fa-exclamation-circle"/>
+                        <span>Unpaid</span>
+                    </button>
+                </div>
+
+                <!-- Suggestion chips — anonymous visitors -->
+                <div id="mcp_chatbot_suggestions_anon" class="mcp-chatbot-suggestions mcp-suggestions-anon">
+                    <button class="mcp-chatbot-suggestion" data-query="Show me your product catalogue">
+                        <i class="fa fa-tags"/>
+                        <span>Products</span>
+                    </button>
+                    <button class="mcp-chatbot-suggestion" data-query="Tell me about your installment payment options">
+                        <i class="fa fa-credit-card"/>
+                        <span>Installments</span>
+                    </button>
+                    <button class="mcp-chatbot-suggestion" data-query="What are your delivery options?">
+                        <i class="fa fa-truck"/>
+                        <span>Delivery</span>
+                    </button>
+                </div>
+
                 <!-- AI disclaimer -->
                 <div class="mcp-chatbot-disclaimer">
                     <span id="mcp_chatbot_disclaimer_name">AI Assistant</span> can make mistakes. Check important info.

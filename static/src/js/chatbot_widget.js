@@ -159,12 +159,12 @@
             escaped = escaped.replace(/~~([^\n]+?)~~/g, '<del>$1</del>');
 
             // 7. Headings (# … ######). Cap visual size via CSS.
-            escaped = escaped.replace(/^###### (.+?)\s*$/gm, '<h6 class="mcp-md-h">$1</h6>');
-            escaped = escaped.replace(/^##### (.+?)\s*$/gm,  '<h5 class="mcp-md-h">$1</h5>');
-            escaped = escaped.replace(/^#### (.+?)\s*$/gm,   '<h4 class="mcp-md-h">$1</h4>');
-            escaped = escaped.replace(/^### (.+?)\s*$/gm,    '<h4 class="mcp-md-h">$1</h4>');
-            escaped = escaped.replace(/^## (.+?)\s*$/gm,     '<h3 class="mcp-md-h">$1</h3>');
-            escaped = escaped.replace(/^# (.+?)\s*$/gm,      '<h2 class="mcp-md-h">$1</h2>');
+            escaped = escaped.replace(/^[ \t]{0,3}###### (.+?)\s*$/gm, '<h6 class="mcp-md-h">$1</h6>');
+            escaped = escaped.replace(/^[ \t]{0,3}##### (.+?)\s*$/gm,  '<h5 class="mcp-md-h">$1</h5>');
+            escaped = escaped.replace(/^[ \t]{0,3}#### (.+?)\s*$/gm,   '<h4 class="mcp-md-h">$1</h4>');
+            escaped = escaped.replace(/^[ \t]{0,3}### (.+?)\s*$/gm,    '<h4 class="mcp-md-h">$1</h4>');
+            escaped = escaped.replace(/^[ \t]{0,3}## (.+?)\s*$/gm,     '<h3 class="mcp-md-h">$1</h3>');
+            escaped = escaped.replace(/^[ \t]{0,3}# (.+?)\s*$/gm,      '<h2 class="mcp-md-h">$1</h2>');
 
             // 8. Horizontal rule — tolerate leading/trailing whitespace and
             //    the `___` variant alongside `---` / `***`.
@@ -420,11 +420,11 @@
                 .then(function (result) {
                     // If session is closed or not found, reset the token
                     if (!result || result.status === 'closed' || result.status === 'not_found') {
-                        // Clear the old token and generate a new one
                         clearSessionToken();
-                        sessionToken = getSessionToken();  // this will create a new token
+                        sessionToken = getSessionToken();
                         container.innerHTML = '';
-                        fetchWelcome(container, callback);
+                        renderHero(container);
+                        if (callback) { callback(false); }
                         return;
                     }
 
@@ -432,10 +432,9 @@
                     container.innerHTML = '';
 
                     if (messages.length === 0) {
-                        // Brand new session — show LLM welcome
-                        fetchWelcome(container, callback);
+                        renderHero(container);
+                        if (callback) { callback(false); }
                     } else {
-                        // Restore messages from backend — real session exists
                         messages.forEach(function (msg) {
                             appendMessage(container, msg.role, msg.content);
                         });
@@ -443,30 +442,88 @@
                     }
                 })
                 .catch(function () {
-                    // On error just show welcome
-                    fetchWelcome(container, callback);
+                    renderHero(container);
+                    if (callback) { callback(false); }
                 });
         }
 
         // ──────────────────────────────────────────────────────────────
-        // Welcome message
+        // Hero greeting (empty-state)
         // ──────────────────────────────────────────────────────────────
 
-        function fetchWelcome(container, callback) {
-            jsonRpc('/mcp_chatbot/welcome', {})
-                .then(function (result) {
-                    var msg = (result && result.welcome)
-                        ? result.welcome
-                        : 'Hello! How can I help you today?';
-                    welcomeText = msg;
-                    appendMessage(container, 'assistant', msg);
-                    if (callback) { callback(false); }   // no real session yet
-                })
-                .catch(function () {
-                    welcomeText = 'Hello! How can I help you today?';
-                    appendMessage(container, 'assistant', welcomeText);
-                    if (callback) { callback(false); }   // no real session yet
-                });
+        function timeOfDay() {
+            var h = new Date().getHours();
+            if (h < 5)  { return 'night'; }
+            if (h < 12) { return 'morning'; }
+            if (h < 18) { return 'afternoon'; }
+            return 'evening';
+        }
+
+        function pickGreeting(isAuthenticated, firstName) {
+            var tod  = timeOfDay();
+            var name = firstName || '';
+
+            var authedByTime = {
+                morning:   ['Good morning, ' + name,   'Morning, ' + name,          'Rise and shine, ' + name],
+                afternoon: ['Good afternoon, ' + name, 'Hey ' + name,               'Welcome back, ' + name],
+                evening:   ['Good evening, ' + name,   'Evening, ' + name,          'Welcome back, ' + name],
+                night:     ['Still up, ' + name + '?', 'Working late, ' + name + '?', 'Welcome back, ' + name],
+            };
+
+            var anonByTime = {
+                morning:   ['Good morning',   'Hi there',      'Hello, ready to start?'],
+                afternoon: ['Good afternoon', 'Hey there',     'Hi, how can I help?'],
+                evening:   ['Good evening',   'Hi there',      'Hello, how can I help?'],
+                night:     ['Hi there',       'Still browsing?', 'Hello, how can I help?'],
+            };
+
+            var pool = isAuthenticated ? authedByTime[tod] : anonByTime[tod];
+            var primary = pool[Math.floor(Math.random() * pool.length)];
+
+            var subPool = isAuthenticated
+                ? ['How can I help you today?', 'What can I do for you?', 'What\u2019s on your mind?']
+                : ['How can I help you today?', 'Ask me anything about our products.', 'What are you looking for today?'];
+            var sub = subPool[Math.floor(Math.random() * subPool.length)];
+
+            return { primary: primary.replace(/,\s*$/, ''), sub: sub };
+        }
+
+        function setEmptyState(on) {
+            var win = document.getElementById('mcp_chatbot_window');
+            if (!win) { return; }
+            win.classList.toggle('mcp-is-empty', !!on);
+            // Pick the suggestion set that matches the auth state. Only
+            // applies when we're actually in the empty state.
+            win.classList.toggle('mcp-auth-user', !!on && !!heroIdentity.isAuthenticated);
+            win.classList.toggle('mcp-auth-anon', !!on && !heroIdentity.isAuthenticated);
+        }
+
+        function renderHero(container) {
+            removeHero(container);
+            setEmptyState(true);
+            var g = pickGreeting(heroIdentity.isAuthenticated, heroIdentity.firstName);
+
+            var wrap = document.createElement('div');
+            wrap.className = 'mcp-chatbot-hero';
+            wrap.id = 'mcp_chatbot_hero';
+
+            var primary = document.createElement('div');
+            primary.className = 'mcp-chatbot-hero-primary';
+            primary.textContent = g.primary;
+
+            var sub = document.createElement('div');
+            sub.className = 'mcp-chatbot-hero-sub';
+            sub.textContent = g.sub;
+
+            wrap.appendChild(primary);
+            wrap.appendChild(sub);
+            container.appendChild(wrap);
+        }
+
+        function removeHero(container) {
+            var existing = container.querySelector('#mcp_chatbot_hero');
+            if (existing) { existing.remove(); }
+            setEmptyState(false);
         }
 
         // ──────────────────────────────────────────────────────────────
@@ -515,11 +572,23 @@
             }
         }
 
-        // Fetch bot metadata once on page load — populates header title, tooltip, and status badge
+        // Identity used by the hero greeting. Populated by /mcp_chatbot/info.
+        var heroIdentity = { isAuthenticated: false, firstName: '' };
+
+        // Fetch bot metadata once on page load — populates header title, tooltip, status badge,
+        // and the hero greeting identity.
         jsonRpc('/mcp_chatbot/info', {})
             .then(function (result) {
-                if (result && result.bot_name) { updateHeaderName(result.bot_name); }
-                if (result && result.status)   { updateStatus(result.status); }
+                if (!result) { return; }
+                if (result.bot_name) { updateHeaderName(result.bot_name); }
+                if (result.status)   { updateStatus(result.status); }
+                heroIdentity.isAuthenticated = !!result.is_authenticated;
+                heroIdentity.firstName       = result.first_name || '';
+                // Re-render the hero if it's already on screen with placeholder identity.
+                var msgArea = document.getElementById('mcp_chatbot_messages');
+                if (msgArea && msgArea.querySelector('#mcp_chatbot_hero')) {
+                    renderHero(msgArea);
+                }
             })
             .catch(function () {});  // silent — fallbacks stay as "AI Assistant" / "Online"
 
@@ -529,7 +598,6 @@
 
         // These are declared here so sendMessage can access them
         var sessionToken = null;
-        var welcomeText  = null;
 
         function initChatbot() {
             if (window.__mcpChatbotInit) { return; }
@@ -693,6 +761,9 @@
                 var text = input.value.trim();
                 if (!text) { return; }
 
+                // First message kicks the hero off the stage.
+                removeHero(msgArea);
+
                 appendMessage(msgArea, 'user', text);
                 input.value = '';
                 sendBtn.disabled = true;
@@ -705,12 +776,6 @@
                 if (sessionToken) {
                     payload.session_token = sessionToken;
                 }
-                // Pass welcome text on first message so backend saves it
-                if (welcomeText) {
-                    payload.welcome = welcomeText;
-                    welcomeText = null;
-                }
-
                 function unlockSend() {
                     sendBtn.disabled = false;
                     updateSendVisibility();
@@ -746,6 +811,17 @@
             }
 
             sendBtn.addEventListener('click', sendMessage);
+
+            // ── Suggestion chips (auth + anon) ────────────────────────
+            document.querySelectorAll('.mcp-chatbot-suggestion').forEach(function (chip) {
+                chip.addEventListener('click', function () {
+                    if (sendBtn.disabled) { return; }
+                    var query = chip.getAttribute('data-query') || chip.textContent.trim();
+                    input.value = query;
+                    updateSendVisibility();
+                    sendMessage();
+                });
+            });
 
             // ── Send button visibility (hide when input is empty) ─────
             function updateSendVisibility() {
