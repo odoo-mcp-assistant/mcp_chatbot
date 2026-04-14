@@ -783,6 +783,37 @@
     }
 }
 
+/* ── Larger screens: scale up from the 400×600 baseline so wide
+   assistant messages (e.g. tables with many columns) fit better
+   on external monitors. ──────────────────────────────────────── */
+@media (min-width: 1600px) {
+    .mcp-chatbot-window {
+        width: 460px;
+        height: 680px;
+    }
+}
+
+@media (min-width: 1920px) {
+    .mcp-chatbot-window {
+        width: 540px;
+        height: 760px;
+    }
+}
+
+@media (min-width: 2400px) {
+    .mcp-chatbot-window {
+        width: 640px;
+        height: 880px;
+    }
+}
+
+@media (min-width: 3000px) {
+    .mcp-chatbot-window {
+        width: 760px;
+        height: 980px;
+    }
+}
+
 /* Compacting bar */
 .mcp-compacting-bar {
     display: flex;
