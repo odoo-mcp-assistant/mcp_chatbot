@@ -265,17 +265,20 @@
                 var inner = document.createElement('div');
                 inner.className = 'mcp-assistant-inner';
 
+                var avatarWrap = document.createElement('span');
+                avatarWrap.className = 'mcp-assistant-avatar-wrap';
                 var avatar = document.createElement('img');
                 avatar.className = 'mcp-assistant-avatar';
                 var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
-                avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+                avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/ai-logo.jpeg';
                 avatar.alt = '';
+                avatarWrap.appendChild(avatar);
 
                 var textSpan = document.createElement('span');
                 textSpan.className = 'mcp-assistant-text';
                 textSpan.innerHTML = renderMarkdown(text);
 
-                inner.appendChild(avatar);
+                inner.appendChild(avatarWrap);
                 inner.appendChild(textSpan);
                 bubble.appendChild(inner);
             } else {
@@ -308,13 +311,16 @@
             var textSpan = document.createElement('span');
             textSpan.className = 'mcp-assistant-text';
 
+            var avatarWrap = document.createElement('span');
+            avatarWrap.className = 'mcp-assistant-avatar-wrap';
             var avatar = document.createElement('img');
             avatar.className = 'mcp-assistant-avatar';
             var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
-            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/ai-logo.jpeg';
             avatar.alt = '';
+            avatarWrap.appendChild(avatar);
 
-            inner.appendChild(avatar);
+            inner.appendChild(avatarWrap);
             inner.appendChild(textSpan);
             bubble.appendChild(inner);
 
@@ -370,17 +376,20 @@
             var inner = document.createElement('div');
             inner.className = 'mcp-assistant-inner';
 
+            var avatarWrap = document.createElement('span');
+            avatarWrap.className = 'mcp-assistant-avatar-wrap';
             var avatar = document.createElement('img');
             avatar.className = 'mcp-assistant-avatar';
             var headerLogo = document.querySelector('.mcp-chatbot-header-logo');
-            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/chat-bot-logo.png';
+            avatar.src = headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/ai-logo.jpeg';
             avatar.alt = '';
+            avatarWrap.appendChild(avatar);
 
             var textSpan = document.createElement('span');
             textSpan.className = 'mcp-assistant-text';
             textSpan.textContent = 'Thinking...';
 
-            inner.appendChild(avatar);
+            inner.appendChild(avatarWrap);
             inner.appendChild(textSpan);
             indicator.appendChild(inner);
 

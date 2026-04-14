@@ -16,7 +16,7 @@
                 <app data-string="MCP Chatbot"
                      string="MCP Chatbot"
                      name="mcp_chatbot"
-                     logo="/mcp_chatbot/static/src/img/chat-bot-logo.png">
+                     logo="/mcp_chatbot/static/src/img/ai-logo.jpeg">
 
                     <!-- General -->
                     <block title="General"

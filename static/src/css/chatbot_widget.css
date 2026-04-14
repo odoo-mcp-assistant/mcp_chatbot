@@ -113,8 +113,6 @@
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
-    border: 1.5px solid #e8e8e8;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
 
 .mcp-chatbot-header-info {
@@ -422,19 +420,26 @@
 }
 
 /* Avatar shown before the assistant message text */
-.mcp-chatbot-msg.assistant .mcp-assistant-avatar {
+.mcp-chatbot-msg.assistant .mcp-assistant-avatar-wrap {
     display: inline-block;
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    object-fit: cover;
-    border: 1.5px solid #e8e8e8;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.10);
+    overflow: hidden;
     vertical-align: middle;
     margin-right: 8px;
     flex-shrink: 0;
     align-self: flex-start;
     margin-top: 2px;
+}
+
+.mcp-chatbot-msg.assistant .mcp-assistant-avatar {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.2);
+    transform-origin: center;
 }
 
 .mcp-assistant-text {
@@ -459,6 +464,10 @@
     color: #999999;
     font-size: 13px;
     letter-spacing: 0.03em;
+}
+
+/* Original opacity pulse, scoped to the text only. */
+.mcp-chatbot-msg.typing .mcp-assistant-text {
     animation: mcp-chatbot-pulse 1.5s ease-in-out infinite;
 }
 
@@ -466,6 +475,61 @@
     0%   { opacity: 1;   }
     50%  { opacity: 0.4; }
     100% { opacity: 1;   }
+}
+
+/* "Thinking" effect — scoped to the avatar only.
+   The logo beats with a two-step rotation (0 → 180 → 360 then rest)
+   while a closed ring of blue-theme tones spins continuously
+   around it. */
+.mcp-chatbot-msg.typing .mcp-assistant-avatar-wrap {
+    overflow: visible;                     /* let the ring paint outside */
+    position: relative;
+    animation: mcp-avatar-spin-beat 1.8s ease-in-out infinite;
+    transform-origin: center;
+    will-change: transform;
+}
+
+/* Keep the img circular even though the wrap no longer clips. */
+.mcp-chatbot-msg.typing .mcp-assistant-avatar {
+    border-radius: 50%;
+    position: relative;
+    z-index: 1;
+}
+
+/* Animatable gradient stop so the arc length can grow/shrink. */
+/* Closed ring around the avatar, tinted entirely with shades
+   from the blue theme — deep → mid → light → mid → deep — so the
+   colour shimmers as the ring spins. */
+.mcp-chatbot-msg.typing .mcp-assistant-avatar-wrap::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        #2c5f82,
+        #4d8eb3,
+        #7cb8d6,
+        #bfe0ee,
+        #7cb8d6,
+        #4d8eb3,
+        #2c5f82
+    );
+    -webkit-mask: radial-gradient(circle, transparent 60%, #000 64%);
+            mask: radial-gradient(circle, transparent 60%, #000 64%);
+    animation: mcp-avatar-ring-spin 1.2s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+@keyframes mcp-avatar-spin-beat {
+    0%        { transform: rotate(0deg);   }
+    30%       { transform: rotate(180deg); }
+    60%, 100% { transform: rotate(360deg); }
+}
+
+@keyframes mcp-avatar-ring-spin {
+    to { transform: rotate(360deg); }
 }
 
 .mcp-chatbot-dots {

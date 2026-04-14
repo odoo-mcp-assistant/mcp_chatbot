@@ -13,14 +13,14 @@
 
             <!-- ── Chat bubble trigger ──────────────────────────── -->
             <div id="mcp_chatbot_bubble" class="mcp-chatbot-bubble" title="Chat with us">
-                <img src="/mcp_chatbot/static/src/img/chat-bot-logo.png" 
-                    alt="Chat" 
-                    style="width: 100%; height: 100%; object-fit: cover; display: block;"/>
+                <img src="/mcp_chatbot/static/src/img/ai-logo.jpeg"
+                    alt="Chat"
+                    style="width: 100%; height: 100%; object-fit: cover; display: block; transform: scale(1.2); transform-origin: center;"/>
             </div>
 
             <!-- ── Bubble hover tooltip ────────────────────────── -->
             <div id="mcp_chatbot_bubble_tooltip" class="mcp-chatbot-bubble-tooltip">
-                <span>Hi, I&#x2019;m <strong id="mcp_chatbot_tooltip_name">AI Assistant</strong>.<br/>How can I help you today?</span>
+                <span>Hi, I&#x2019;m <strong id="mcp_chatbot_tooltip_name">AI Assistant</strong>,<br/>your AI assistant.</span>
                 <div class="mcp-chatbot-bubble-tooltip-arrow"></div>
             </div>
 
@@ -31,7 +31,7 @@
                 <div class="mcp-chatbot-header">
                     <div class="mcp-chatbot-header-identity">
                         <img class="mcp-chatbot-header-logo"
-                             src="/mcp_chatbot/static/src/img/chat-bot-logo.png"
+                             src="/mcp_chatbot/static/src/img/ai-logo.jpeg"
                              alt="Bot"/>
                         <div class="mcp-chatbot-header-info">
                             <span id="mcp_chatbot_title" class="mcp-chatbot-title">AI Assistant</span>
