@@ -191,6 +191,12 @@ class MCPChatbotController(http.Controller):
                 'history_summary':       new_summary,
                 'last_summarized_count': prior_count,
             })
+            # Flush before the MCP loop: the MCP server writes partner_id to
+            # this same session row via JSON-RPC in its own transaction, and
+            # holding our write open for the ~60–90 s tool loop causes a
+            # serialization conflict on final commit → Odoo retries the
+            # whole request → duplicate tool calls.
+            request.env.cr.commit()
             unsummarized_messages = []
             did_summarize = True
 
