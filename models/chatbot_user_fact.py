@@ -2,18 +2,12 @@
 """
 chatbot_user_fact.py
 --------------------
-Mirrors every fact stored in ChromaDB into the Odoo database so that
-admins can inspect, edit, or delete facts directly from the backend UI.
-
-Each record represents one durable fact extracted from a conversation turn
-and linked to the res.partner that owns it.
+Stores durable facts about authenticated users. Each record is created by
+the LLM through the `remember_fact` tool when it decides a statement is
+worth keeping for future conversations.
 """
 
-import logging
-
 from odoo import fields, models
-
-_logger = logging.getLogger(__name__)
 
 
 class ChatbotUserFact(models.Model):
@@ -33,19 +27,13 @@ class ChatbotUserFact(models.Model):
     fact_text = fields.Text(
         string="Fact",
         required=True,
-        help="The extracted fact text, as stored verbatim in ChromaDB.",
     )
     category = fields.Char(
         string="Category",
         default="general",
-        help="Category label returned by the LLM extractor (e.g. preference, personal, etc.).",
-    )
-    chroma_doc_id = fields.Char(
-        string="ChromaDB Document ID",
-        readonly=True,
-        help="MD5 hash used as the document ID in ChromaDB — useful for cross-referencing.",
+        help="Short label such as: preference, ecosystem, dislike, health, profession, lifestyle, general.",
     )
     create_date = fields.Datetime(
-        string="Extracted At",
+        string="Saved At",
         readonly=True,
     )

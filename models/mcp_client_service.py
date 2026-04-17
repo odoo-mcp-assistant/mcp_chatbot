@@ -8,6 +8,9 @@ from odoo import models, api
 from openai import OpenAI, AsyncOpenAI
 import json
 
+import odoo
+from odoo.api import Environment
+
 from .base_client import BaseHTTPMCPClient
 
 _logger = logging.getLogger(__name__)
@@ -65,6 +68,52 @@ AUTH_REQUIRED_TOOLS = {
     'get_unpaid_invoices',
 }
 
+# Tools handled locally inside the Odoo addon rather than forwarded to the
+# external MCP server. The LLM sees these alongside MCP tools; when it calls
+# one, we intercept in the agentic loop and run our own handler.
+LOCAL_TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "remember_fact",
+            "description": (
+                "Save a durable preference or personal detail about the "
+                "current user for future conversations. Call this only when "
+                "the user reveals something that will still matter weeks or "
+                "months later — brand preferences, allergies, dietary needs, "
+                "profession, ecosystem (Android/Apple), persistent dislikes, "
+                "recurring needs. Do NOT call for transient state (mood, "
+                "current search, one-off questions). Authenticated or "
+                "OTP-verified users only — the call is a no-op for anonymous "
+                "visitors."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": (
+                            "The fact in a self-contained sentence, written "
+                            "from the system's perspective. Example: 'User "
+                            "prefers Samsung phones and dislikes AirPods.'"
+                        ),
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": (
+                            "Short label such as: preference, ecosystem, "
+                            "dislike, health, profession, lifestyle, general."
+                        ),
+                    },
+                },
+                "required": ["text"],
+            },
+        },
+    },
+]
+
+LOCAL_TOOL_NAMES = {t["function"]["name"] for t in LOCAL_TOOL_SCHEMAS}
+
 # ---------------------------------------------------------------------------
 # Background event loop helpers
 # ---------------------------------------------------------------------------
@@ -113,7 +162,7 @@ async def _async_connect_to_client(server_url):
     await _mcp_client.connect()
 
     tools = (await _mcp_client.session.list_tools()).tools
-    _tool_schemas = [
+    mcp_schemas = [
         {
             "type": "function",
             "function": {
@@ -124,11 +173,16 @@ async def _async_connect_to_client(server_url):
         }
         for t in tools
     ]
+    # Local tools (e.g. remember_fact) run inside the Odoo addon and are
+    # merged with the MCP-served tools so the LLM sees a single unified list.
+    _tool_schemas = LOCAL_TOOL_SCHEMAS + mcp_schemas
 
     _logger.info(
-        "MCP: connected to %s — %d tools loaded: %s",
+        "MCP: connected to %s — %d tools loaded (%d local, %d mcp): %s",
         server_url,
         len(_tool_schemas),
+        len(LOCAL_TOOL_SCHEMAS),
+        len(mcp_schemas),
         [s["function"]["name"] for s in _tool_schemas],
     )
 
@@ -137,9 +191,58 @@ async def _async_connect_to_client(server_url):
 # Async LLM + tool-call loop
 # ---------------------------------------------------------------------------
 
+def _handle_remember_fact(args: dict, authenticated_partner_id, registry, db_name) -> str:
+    """
+    Local handler for the `remember_fact` tool. Writes one row to
+    mcp.chatbot.user.fact using a fresh cursor so the fact is committed
+    immediately — independent of whether the rest of the request succeeds.
+
+    Returns a JSON string suitable for feeding back into the LLM.
+    """
+    text = (args.get("text") or "").strip()
+    category = (args.get("category") or "general").strip() or "general"
+
+    if not text:
+        return json.dumps({"success": False, "error": "empty fact text"})
+
+    if not authenticated_partner_id:
+        # Facts are per-partner; anonymous visitors have nowhere to store them.
+        return json.dumps({
+            "success": False,
+            "error": "user is not authenticated — facts cannot be saved",
+        })
+
+    if not registry or not db_name:
+        return json.dumps({"success": False, "error": "no database context available"})
+
+    try:
+        with registry.cursor() as cr:
+            env = Environment(cr, odoo.SUPERUSER_ID, {})
+            Fact = env["mcp.chatbot.user.fact"]
+            # Deduplicate on (partner, text) — LLM occasionally calls the same
+            # fact twice across rounds.
+            existing = Fact.search([
+                ("partner_id", "=", authenticated_partner_id),
+                ("fact_text", "=", text),
+            ], limit=1)
+            if existing:
+                existing.write({"category": category})
+                return json.dumps({"success": True, "updated": True, "id": existing.id})
+            rec = Fact.create({
+                "partner_id": authenticated_partner_id,
+                "fact_text": text,
+                "category": category,
+            })
+            return json.dumps({"success": True, "created": True, "id": rec.id})
+    except Exception as exc:
+        _logger.error("MCP: remember_fact failed: %s", exc)
+        return json.dumps({"success": False, "error": str(exc)})
+
+
 async def _async_process_message(user_message, history, authenticated_partner_id=None, session_id=None,
                                   api_key=None, base_url=None, model_name=None,
-                                  system_prompt=None, max_tool_rounds=5):
+                                  system_prompt=None, max_tool_rounds=5,
+                                  registry=None, db_name=None):
     """
     Returns (reply_text, verified_partner_id_or_None).
     verified_partner_id is non-None when verify_email_otp succeeded during this call —
@@ -188,6 +291,33 @@ async def _async_process_message(user_message, history, authenticated_partner_id
             tool_name = tool_call.function.name
             args = json.loads(tool_call.function.arguments)
 
+            # Local tools run inside this addon and are never forwarded to
+            # the MCP server.
+            if tool_name in LOCAL_TOOL_NAMES:
+                if tool_name == "remember_fact":
+                    result_text = _handle_remember_fact(
+                        args if isinstance(args, dict) else {},
+                        authenticated_partner_id,
+                        registry,
+                        db_name,
+                    )
+                else:
+                    result_text = json.dumps({
+                        "success": False,
+                        "error": f"local tool '{tool_name}' has no handler",
+                    })
+                _logger.info(
+                    "MCP: round %d — local tool '%s' handled: %s",
+                    round_number + 1, tool_name, result_text[:160],
+                )
+                conversation.append({
+                    "role":         "tool",
+                    "tool_call_id": tool_call.id,
+                    "name":         tool_name,
+                    "content":      result_text,
+                })
+                continue
+
             if tool_name == "verify_email_otp":
                 if not isinstance(args, dict):
                     args = {}
@@ -202,18 +332,7 @@ async def _async_process_message(user_message, history, authenticated_partner_id
                         "suggestion": (
                             "This action requires a verified identity. "
                             "The user can either sign in to their account, "
-                            "or verify via email using these steps:\n"
-                            "Step 1: Ask the user for their email address. "
-                            "Send ONLY this question and STOP. Do not call any tool.\n"
-                            "Step 2: Once the user replies with their email, "
-                            "call send_verification_email with that email. "
-                            "Tell them a code was sent and STOP. "
-                            "Do not repeat yourself. One short sentence is enough.\n"
-                            "Step 3: Once the user replies with the 6-digit code, "
-                            "call verify_email_otp with their email and code.\n"
-                            "Step 4: Once verified, retry the original action.\n"
-                            "IMPORTANT: Each step requires a separate user reply. "
-                            "Do NOT combine steps. Send one short message per step and wait."
+                            "or verify via email."
                         ),
                     })
                     _logger.info(
@@ -373,6 +492,8 @@ class MCPClientService(models.AbstractModel):
                     model_name=settings['model_name'],
                     system_prompt=settings['system_prompt'],
                     max_tool_rounds=settings['max_tool_rounds'],
+                    registry=self.env.registry,
+                    db_name=self.env.cr.dbname,
                 )
             )
             return reply, verified_partner_id

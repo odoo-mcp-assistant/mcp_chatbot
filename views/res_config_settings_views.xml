@@ -71,43 +71,6 @@
                         </setting>
                     </block>
 
-                    <!-- RAG -->
-                    <block title="RAG"
-                           name="mcp_chatbot_rag">
-                        <setting string="Fact Extraction API Key"
-                                 help="API key used exclusively for the fact extraction LLM. Falls back to the main API key if left empty."
-                                 id="chatbot_fact_extraction_api_key_setting">
-                            <field name="chatbot_fact_extraction_api_key" style="width: 100%;"/>
-                        </setting>
-                        <setting string="Fact Extraction Base URL"
-                                 help="Base URL for the fact extraction LLM API. Falls back to the main Base URL if left empty."
-                                 id="chatbot_fact_extraction_base_url_setting">
-                            <field name="chatbot_fact_extraction_base_url" style="width: 100%;"/>
-                        </setting>
-                        <setting string="Fact Extraction Provider"
-                                 help="Filter the fact extraction model list to a specific provider."
-                                 id="chatbot_fact_extraction_provider_setting">
-                            <field name="chatbot_fact_extraction_provider_id"/>
-                        </setting>
-                        <setting string="Fact Extraction Model"
-                                 help="The language model used to extract long-term memory facts from conversations."
-                                 id="chatbot_fact_extraction_model_setting">
-                            <field name="chatbot_fact_extraction_model_id"
-                                   domain="[('provider_id', '=', chatbot_fact_extraction_provider_id)]"/>
-                        </setting>
-                        <setting string="RAG System Prompt"
-                                 help="System prompt used by the fact extraction model."
-                                 id="chatbot_rag_system_prompt_setting"
-                                 colspan="2">
-                            <div class="col-12">
-                                <field name="chatbot_rag_system_prompt"
-                                    widget="text"
-                                    style="width: 100%;"/>
-                            </div>
-                        </setting>
-                        
-                    </block>
-
                     <!-- Summary -->
                     <block title="Summary"
                            name="mcp_chatbot_summary">

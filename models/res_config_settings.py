@@ -57,35 +57,6 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ------------------------------------------------------------------ #
-    # RAG                                                                  #
-    # ------------------------------------------------------------------ #
-
-    chatbot_fact_extraction_provider_id = fields.Many2one(
-        comodel_name='mcp.llm.provider',
-        string="Fact Extraction Provider",
-    )
-
-    chatbot_fact_extraction_model_id = fields.Many2one(
-        comodel_name='mcp.llm.model',
-        string="Fact Extraction Model",
-    )
-
-    chatbot_fact_extraction_api_key = fields.Char(
-        string="Fact Extraction API Key",
-        config_parameter='mcp_chatbot.fact_extraction_api_key',
-    )
-
-    chatbot_fact_extraction_base_url = fields.Char(
-        string="Fact Extraction Base URL",
-        config_parameter='mcp_chatbot.fact_extraction_base_url',
-    )
-
-    chatbot_rag_system_prompt = fields.Char(
-        string="RAG System Prompt",
-        config_parameter='mcp_chatbot.rag_system_prompt',
-    )
-
-    # ------------------------------------------------------------------ #
     # Summary                                                              #
     # ------------------------------------------------------------------ #
 
@@ -145,13 +116,6 @@ class ResConfigSettings(models.TransientModel):
                 and self.chatbot_llm_model_id.provider_id != self.chatbot_llm_provider_id):
             self.chatbot_llm_model_id = False
 
-    @api.onchange('chatbot_fact_extraction_provider_id')
-    def _onchange_fact_extraction_provider(self):
-        if (self.chatbot_fact_extraction_model_id
-                and self.chatbot_fact_extraction_provider_id
-                and self.chatbot_fact_extraction_model_id.provider_id != self.chatbot_fact_extraction_provider_id):
-            self.chatbot_fact_extraction_model_id = False
-
     @api.onchange('chatbot_summary_provider_id')
     def _onchange_summary_provider(self):
         if (self.chatbot_summary_model_id
@@ -183,20 +147,6 @@ class ResConfigSettings(models.TransientModel):
         else:
             res['chatbot_llm_model_id'] = False
 
-        # Fact extraction provider
-        fact_provider_id = param.get_param('mcp_chatbot.fact_extraction_provider_id')
-        if fact_provider_id and LlmProvider.browse(int(fact_provider_id)).exists():
-            res['chatbot_fact_extraction_provider_id'] = int(fact_provider_id)
-        else:
-            res['chatbot_fact_extraction_provider_id'] = False
-
-        # Fact extraction model
-        fact_model_id = param.get_param('mcp_chatbot.fact_extraction_model_id')
-        if fact_model_id and LlmModel.browse(int(fact_model_id)).exists():
-            res['chatbot_fact_extraction_model_id'] = int(fact_model_id)
-        else:
-            res['chatbot_fact_extraction_model_id'] = False
-
         # Summary provider
         summary_provider_id = param.get_param('mcp_chatbot.summary_provider_id')
         if summary_provider_id and LlmProvider.browse(int(summary_provider_id)).exists():
@@ -223,14 +173,6 @@ class ResConfigSettings(models.TransientModel):
         param.set_param(
             'mcp_chatbot.llm_model_id',
             self.chatbot_llm_model_id.id or False,
-        )
-        param.set_param(
-            'mcp_chatbot.fact_extraction_provider_id',
-            self.chatbot_fact_extraction_provider_id.id or False,
-        )
-        param.set_param(
-            'mcp_chatbot.fact_extraction_model_id',
-            self.chatbot_fact_extraction_model_id.id or False,
         )
         param.set_param(
             'mcp_chatbot.summary_provider_id',

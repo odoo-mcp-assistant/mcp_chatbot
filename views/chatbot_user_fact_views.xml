@@ -12,8 +12,7 @@
                 <field name="partner_id"/>
                 <field name="fact_text"/>
                 <field name="category"/>
-                <field name="chroma_doc_id" optional="hide"/>
-                <field name="create_date" string="Extracted At"/>
+                <field name="create_date" string="Saved At"/>
             </list>
         </field>
     </record>
@@ -31,10 +30,7 @@
                         <group string="Owner">
                             <field name="partner_id"/>
                             <field name="category"/>
-                            <field name="create_date" string="Extracted At"/>
-                        </group>
-                        <group string="ChromaDB Reference">
-                            <field name="chroma_doc_id"/>
+                            <field name="create_date" string="Saved At"/>
                         </group>
                     </group>
                     <group string="Fact Content">

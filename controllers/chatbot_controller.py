@@ -1,60 +1,10 @@
 # mcp_chatbot/controllers/chatbot_controller.py
 import logging
-import os
 
 from odoo import http
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Service loaders — load services/ files by absolute path so they work
-# inside Odoo without package context issues.
-# ---------------------------------------------------------------------------
-
-def _get_fact_extractor():
-    import sys, importlib.util
-    services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
-    if 'mcp_chatbot_fact_extractor' not in sys.modules:
-        spec = importlib.util.spec_from_file_location(
-            'mcp_chatbot_fact_extractor',
-            os.path.join(services_dir, 'fact_extractor.py')
-        )
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules['mcp_chatbot_fact_extractor'] = mod
-        spec.loader.exec_module(mod)
-    return sys.modules['mcp_chatbot_fact_extractor']
-
-
-def _get_memory_service():
-    import sys, importlib.util
-    services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'services'))
-
-    # Add services dir to sys.path so 'import embedding_service' inside
-    # memory_service.py resolves correctly
-    if services_dir not in sys.path:
-        sys.path.insert(0, services_dir)
-
-    if 'embedding_service' not in sys.modules:
-        spec = importlib.util.spec_from_file_location(
-            'embedding_service',
-            os.path.join(services_dir, 'embedding_service.py')
-        )
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules['embedding_service'] = mod
-        spec.loader.exec_module(mod)
-
-    if 'mcp_chatbot_memory_service' not in sys.modules:
-        spec = importlib.util.spec_from_file_location(
-            'mcp_chatbot_memory_service',
-            os.path.join(services_dir, 'memory_service.py')
-        )
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules['mcp_chatbot_memory_service'] = mod
-        spec.loader.exec_module(mod)
-
-    return sys.modules['mcp_chatbot_memory_service']
 
 
 class MCPChatbotController(http.Controller):
@@ -247,28 +197,36 @@ class MCPChatbotController(http.Controller):
             }
         ] + conversation_history
 
-        # ── RAG: retrieve and inject long-term memories ──────────────────
-        user_id = str(effective_partner_id) if effective_partner_id else None
-
-        # Only for authenticated/verified users — pure anonymous sessions have no stored facts
-        if user_id:
+        # ── Inject stored user facts ─────────────────────────────────────
+        # All facts for the authenticated partner are read from the Odoo
+        # model and injected verbatim. No vector search — the per-user fact
+        # set is small enough to send whole; the LLM filters by relevance.
+        if effective_partner_id:
             try:
-                memory_service = _get_memory_service()
-                memories = memory_service.retrieve_memories(user_id, user_message, n_results=5)
-                if memories:
-                    memory_context = (
-                        "USER PREFERENCES (personal taste and history — NOT inventory, "
-                        "NOT current product data; never cite these as products we sell):\n"
+                UserFact = request.env['mcp.chatbot.user.fact'].sudo()
+                facts = UserFact.search(
+                    [('partner_id', '=', effective_partner_id)],
+                    order='create_date desc',
+                )
+                if facts:
+                    fact_lines = [
+                        f"- [{(f.category or 'general')}] {f.fact_text}"
+                        for f in facts
+                    ]
+                    fact_context = (
+                        "KNOWN FACTS ABOUT THIS USER (personal preferences / history — "
+                        "NOT current inventory or product data; use only to personalise "
+                        "recommendations and responses):\n" + "\n".join(fact_lines)
                     )
-                    memory_context += "\n".join(f"- {m}" for m in memories)
                     conversation_history = [
-                        {'role': 'system', 'content': memory_context}
+                        {'role': 'system', 'content': fact_context}
                     ] + conversation_history
                     _logger.info(
-                        'mcp_chatbot: injected %d memories for user %s', len(memories), user_id
+                        'mcp_chatbot: injected %d stored facts for partner %s',
+                        len(facts), effective_partner_id,
                     )
             except Exception as exc:
-                _logger.error('mcp_chatbot: memory retrieval failed: %s', exc)
+                _logger.error('mcp_chatbot: fact injection failed: %s', exc)
 
         print(f"\n{'*'*80}\n[CONVERSATION HISTORY] {len(conversation_history)} messages:\n" + "\n".join(f"  [{m['role'].upper()}] {m['content'][:150]}{'...' if len(m['content'])>150 else ''}" for m in conversation_history) + f"\n[USER MSG] {user_message}\n{'*'*80}\n")
 
@@ -283,13 +241,12 @@ class MCPChatbotController(http.Controller):
             _logger.error('mcp_chatbot: MCP pipeline error: %s', exc)
             ai_reply, new_verified_partner_id = 'Sorry, I encountered an error. Please try again.', None
 
-        # Session ↔ partner linkage is now handled inside the MCP server's
-        # verify_email_otp tool (same transaction as the partner create),
-        # so we only update the in-memory variables for RAG/fact extraction
-        # in the remainder of this request.
+        # Session ↔ partner linkage is handled inside the MCP server's
+        # verify_email_otp tool (same transaction as the partner create).
+        # We only update the in-memory variable so the rest of this
+        # request knows the caller is now verified.
         if new_verified_partner_id:
             effective_partner_id = effective_partner_id or new_verified_partner_id
-            user_id = str(effective_partner_id)
 
         # ── Persist assistant reply ──────────────────────────────────────
         Message.create({
@@ -307,56 +264,9 @@ class MCPChatbotController(http.Controller):
         if not new_verified_partner_id:
             session.touch_activity()
 
-        # ── RAG: extract and store facts in background thread ────────────
-        # Only for authenticated users — anonymous sessions are not persisted
-        if user_id:
-            try:
-                # Read API key and fact extraction model from settings
-                param = request.env['ir.config_parameter'].sudo()
-                api_key = (
-                    param.get_param('mcp_chatbot.fact_extraction_api_key', '')                
-                )
-                base_url = (
-                    param.get_param('mcp_chatbot.fact_extraction_base_url', '')
-                )
-                fact_model_name = ''
-                fact_model_id = param.get_param('mcp_chatbot.fact_extraction_model_id')
-                if fact_model_id:
-                    record = request.env['mcp.llm.model'].sudo().browse(int(fact_model_id))
-                    if record.exists():
-                        fact_model_name = (
-                            f"{record.provider_id.name}/{record.name}"
-                            if record.provider_id
-                            else record.name
-                        )
-                
-                rag_system_prompt = param.get_param('mcp_chatbot.rag_system_prompt', '')
-
-                # Build 4-message context window: [prev_user, prev_assistant, current_user, current_assistant]
-                chat_turns = [m for m in prior_history if m.get('role') in ('user', 'assistant')]
-                context_window = chat_turns[-2:] + [
-                    {'role': 'user',      'content': user_message},
-                    {'role': 'assistant', 'content': ai_reply},
-                ]
-
-                fact_extractor = _get_fact_extractor()
-                memory_service = _get_memory_service()
-                fact_extractor.extract_facts_async(
-                    api_key=api_key,
-                    base_url=base_url,
-                    extraction_model=fact_model_name,
-                    rag_system_prompt=rag_system_prompt,
-                    user_id=user_id,
-                    user_message=user_message,
-                    bot_response=ai_reply,
-                    memory_service_module=memory_service,
-                    odoo_registry=request.env.registry,
-                    odoo_db=request.env.cr.dbname,
-                    context_window=context_window,
-                )
-                _logger.info('mcp_chatbot: fact extraction triggered for user %s', user_id)
-            except Exception as exc:
-                _logger.error('mcp_chatbot: fact extraction trigger failed: %s', exc)
+        # Facts are no longer extracted here — the LLM saves them itself via
+        # the `remember_fact` tool inside the agentic loop when it decides a
+        # statement is durable enough to keep.
 
         return {'reply': ai_reply, 'summarized': did_summarize}
 
