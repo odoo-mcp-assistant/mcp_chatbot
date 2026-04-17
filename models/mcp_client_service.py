@@ -25,11 +25,45 @@ _initialized = False
 
 # Cached OpenAI clients — keyed by (api_key, base_url) so they survive
 # settings changes while avoiding per-request instantiation overhead.
-_async_client_cache: dict = {}   # (api_key, base_url) → AsyncOpenAI
-_sync_client_cache: dict = {}    # (api_key, base_url) → OpenAI
+#
+# Structure du cache :
+#   _async_client_cache = {
+#       (api_key, base_url): AsyncOpenAI_instance,  # client asynchrone
+#       ...
+#   }
+#   _sync_client_cache = {
+#       (api_key, base_url): OpenAI_instance,       # client synchrone
+#       ...
+#   }
+#
+# Pourquoi un dictionnaire ?
+# 1. Accès O(1) : vérification et récupération en temps constant
+# 2. Gestion multi-config : chaque combinaison (api_key, base_url) a son propre client
+#    → si l'admin change les settings, l'ancien client reste en cache pour les
+#      requêtes en cours, un nouveau est créé pour la nouvelle config
+# 3. Persistance : variable module-level, survit aux appels de fonction
+# 4. Évite la réinstanciation coûteuse : AsyncOpenAI/OpenAI créent des pools de
+#    connexions HTTP, timeouts, retry config → instanciation lourde à faire à chaque appel
+_async_client_cache: dict = {}  # (api_key, base_url) → AsyncOpenAI
+_sync_client_cache: dict = {}  # (api_key, base_url) → OpenAI
 
 
 def _get_async_client(api_key, base_url) -> AsyncOpenAI:
+    """
+    Retourne un client AsyncOpenAI en cache ou le crée si nécessaire.
+
+    Cache par clé (api_key, base_url) pour :
+    - Éviter la réinstanciation coûteuse à chaque appel LLM
+    - Gérer plusieurs configurations simultanément (ex: settings changées)
+    - Réutiliser les pools de connexions HTTP keep-alive
+
+    Args:
+        api_key: clé d'API OpenAI/compatible
+        base_url: URL de base du endpoint LLM
+
+    Returns:
+        AsyncOpenAI: instance (cachée ou nouvellement créée)
+    """
     key = (api_key, base_url)
     if key not in _async_client_cache:
         _async_client_cache[key] = AsyncOpenAI(
@@ -40,7 +74,7 @@ def _get_async_client(api_key, base_url) -> AsyncOpenAI:
         )
     return _async_client_cache[key]
 
-    
+
 def _get_sync_client(api_key, base_url) -> OpenAI:
     key = (api_key, base_url)
     if key not in _sync_client_cache:
@@ -54,57 +88,119 @@ def _get_sync_client(api_key, base_url) -> OpenAI:
 
 
 AUTH_REQUIRED_TOOLS = {
-    'get_orders',
-    'create_order',
-    'confirm_order',
-    'cancel_order',
-    'get_order_details',
-    'get_my_profile',
-    'get_invoices',
-    'get_invoice_details',
-    'get_unpaid_invoices',
+    "get_orders",
+    "create_order",
+    "confirm_order",
+    "cancel_order",
+    "get_order_details",
+    "get_my_profile",
+    "get_invoices",
+    "get_invoice_details",
+    "get_unpaid_invoices",
 }
 
 # ---------------------------------------------------------------------------
 # Background event loop helpers
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# Background event loop helpers
+# ---------------------------------------------------------------------------
+
+
 def _set_background_event_loop(loop):
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
+    """
+    Fonction cible pour le thread daemon.
+    Exécutée dans un thread séparé, elle héberge la boucle asyncio.
+
+    Args:
+        loop: boucle asyncio créée par _get_or_create_event_loop()
+    """
+    asyncio.set_event_loop(loop)  # Lie la boucle asyncio au thread courant (le thread daemon)
+    loop.run_forever()  # Lance la boucle en mode infini → ne retourne jamais (sauf arrêt explicite)
 
 
 def _get_or_create_event_loop():
+    """
+    Singleton thread-safe pour obtenir/créer la boucle asynchrone globale et son thread.
+
+    Pourquoi un singleton ?
+    - Odoo est synchrone mais on a besoin d'async pour les LLM/MCP
+    - On crée UNE SEULE boucle asyncio partagée pour toute l'application
+    - Évite de saturer le système avec plusieurs boucles/threads
+
+    Returns:
+        asyncio.AbstractEventLoop: la boucle (existante ou nouvellement créée)
+    """
     global _event_loop, _thread
 
+    # Si la boucle existe déjà et tourne, on la réutilise → pas besoin de tout recréer
     if _event_loop is not None and _event_loop.is_running():
         return _event_loop
 
+    # Création d'une nouvelle boucle asyncio (non liée à un thread par défaut)
     _event_loop = asyncio.new_event_loop()
+
+    # Création du thread daemon qui hébergera cette boucle
     _thread = threading.Thread(
-        target=_set_background_event_loop,
-        args=(_event_loop,),
-        daemon=True,
-        name="mcp-event-loop",
+        target=_set_background_event_loop,  # Fonction exécutée au demarrage de thread 
+        args=(_event_loop,),  # Argument: la boucle à héberger
+        daemon=True,  # Thread daemon → meurt avec le programme principal
+        name="mcp-event-loop",  # Nom identifiable dans les logs/debug
     )
-    _thread.start()
+    _thread.start()  # Lance le thread → _set_background_event_loop() s'exécute maintenant
     _logger.info("MCP: background event loop started")
     return _event_loop
 
 
 def _run_async(coro, timeout=118):
-    loop = _get_or_create_event_loop()
+    """
+    Pont synchrone → asynchrone.
+    Permet d'exécuter une coroutine asyncio depuis du code synchrone (ex: méthodes Odoo).
+
+    Flux complet:
+    1. Obtient/crée la boucle en arrière-plan (thread daemon)
+    2. Soumet la coroutine à cette boucle via run_coroutine_threadsafe()
+    3. Bloque le thread appelant (Odoo) jusqu'à ce que la coroutine se termine
+
+    Pourquoi nécessaire ?
+    - Odoo n'est pas async-native (pas de support asyncio dans controllers/models)
+    - Les clients LLM (AsyncOpenAI) et MCP sont asynchrones
+    - Ce bridge permet de faire communiquer les deux mondes
+
+    Args:
+        coro: coroutine à exécuter (ex: _async_process_message(...))
+        timeout: timeout en secondes (défaut 118, conforme aux timeouts LLM)
+
+    Returns:
+        Le résultat de la coroutine
+
+    Raises:
+        TimeoutError: si la coroutine dépasse le timeout
+    """
+    loop = _get_or_create_event_loop()  # 1. S'assure que la boucle en arrière-plan existe
+
+    # 2. Soumet la coroutine à la boucle qui tourne dans le thread daemon
+    # run_coroutine_threadsafe retourne un concurrent.futures.Future (pas asyncio.Future)
+    # Ce future est immédiatement disponible → non bloquant pour le thread principal ici
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    try:                                                                                                     
-        return future.result(timeout=timeout)                                                                
-    except TimeoutError:                                                                                     
-        future.cancel()          # kill the orphaned coroutine                                               
-        raise 
+
+    try:
+        # 3. Bloque le thread appelant (Odoo) jusqu'à ce que la coroutine se termine
+        #    future.result() attend le résultat de la coroutine (synchronous wait)
+        return future.result(timeout=timeout)
+    except TimeoutError:
+        # 4. En cas de timeout, annule la coroutine dans la boucle asyncio
+        #    pour éviter les coroutines orphelines qui continueraient en arrière-plan
+        future.cancel()  # kill the orphaned coroutine
+        raise  # Relance l'exception TimeoutError au callant (_async_process_message ou process_message)
 
 
 # ---------------------------------------------------------------------------
 # Async initialisation
 # ---------------------------------------------------------------------------
+
 
 async def _async_connect_to_client(server_url):
     global _mcp_client, _tool_schemas
@@ -137,9 +233,18 @@ async def _async_connect_to_client(server_url):
 # Async LLM + tool-call loop
 # ---------------------------------------------------------------------------
 
-async def _async_process_message(user_message, history, authenticated_partner_id=None, session_id=None,
-                                  api_key=None, base_url=None, model_name=None,
-                                  system_prompt=None, max_tool_rounds=5):
+
+async def _async_process_message(
+    user_message,
+    history,
+    authenticated_partner_id=None,
+    session_id=None,
+    api_key=None,
+    base_url=None,
+    model_name=None,
+    system_prompt=None,
+    max_tool_rounds=5,
+):
     """
     Returns (reply_text, verified_partner_id_or_None).
     verified_partner_id is non-None when verify_email_otp succeeded during this call —
@@ -160,7 +265,10 @@ async def _async_process_message(user_message, history, authenticated_partner_id
         # Check if this coroutine was cancelled (e.g. timeout in _run_async)
         if asyncio.current_task() and asyncio.current_task().cancelled():
             _logger.info("MCP: coroutine cancelled, stopping agentic loop")
-            return "Sorry, the request timed out. Please try again.", verified_partner_id
+            return (
+                "Sorry, the request timed out. Please try again.",
+                verified_partner_id,
+            )
 
         response = await client.chat.completions.create(
             model=model_name,
@@ -171,13 +279,18 @@ async def _async_process_message(user_message, history, authenticated_partner_id
         )
 
         message = response.choices[0].message
-        print(80*"=")
+        print(80 * "=")
         print(message)
-        print(80*"=")
+        print(80 * "=")
 
         # No tool calls — model is done, return its text reply
         if not message.tool_calls:
-            reply = message.content or getattr(message, 'reasoning_content', '') or getattr(message, 'reasoning', '') or ""
+            reply = (
+                message.content
+                or getattr(message, "reasoning_content", "")
+                or getattr(message, "reasoning", "")
+                or ""
+            )
             return reply, verified_partner_id
 
         # Append the assistant turn with its tool call requests
@@ -197,42 +310,49 @@ async def _async_process_message(user_message, history, authenticated_partner_id
                 if not isinstance(args, dict):
                     args = {}
                 if not authenticated_partner_id:
-                    result_text = json.dumps({
-                        "error": "Authentication required",
-                        "suggestion": (
-                            "This action requires a verified identity. "
-                            "The user can either sign in to their account, "
-                            "or verify via email using these steps:\n"
-                            "Step 1: Ask the user for their email address. "
-                            "Send ONLY this question and STOP. Do not call any tool.\n"
-                            "Step 2: Once the user replies with their email, "
-                            "call send_verification_email with that email. "
-                            "Tell them a code was sent and STOP. "
-                            "Do not repeat yourself. One short sentence is enough.\n"
-                            "Step 3: Once the user replies with the 6-digit code, "
-                            "call verify_email_otp with their email and code.\n"
-                            "Step 4: Once verified, retry the original action.\n"
-                            "IMPORTANT: Each step requires a separate user reply. "
-                            "Do NOT combine steps. Send one short message per step and wait."
-                        ),
-                    })
+                    result_text = json.dumps(
+                        {
+                            "error": "Authentication required",
+                            "suggestion": (
+                                "This action requires a verified identity. "
+                                "The user can either sign in to their account, "
+                                "or verify via email using these steps:\n"
+                                "Step 1: Ask the user for their email address. "
+                                "Send ONLY this question and STOP. Do not call any tool.\n"
+                                "Step 2: Once the user replies with their email, "
+                                "call send_verification_email with that email. "
+                                "Tell them a code was sent and STOP. "
+                                "Do not repeat yourself. One short sentence is enough.\n"
+                                "Step 3: Once the user replies with the 6-digit code, "
+                                "call verify_email_otp with their email and code.\n"
+                                "Step 4: Once verified, retry the original action.\n"
+                                "IMPORTANT: Each step requires a separate user reply. "
+                                "Do NOT combine steps. Send one short message per step and wait."
+                            ),
+                        }
+                    )
                     _logger.info(
                         "MCP: round %d — tool '%s' blocked (no partner_id), "
                         "returning auth suggestion",
-                        round_number + 1, tool_name,
+                        round_number + 1,
+                        tool_name,
                     )
-                    conversation.append({
-                        "role":         "tool",
-                        "tool_call_id": tool_call.id,
-                        "name":         tool_name,
-                        "content":      result_text,
-                    })
+                    conversation.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "name": tool_name,
+                            "content": result_text,
+                        }
+                    )
                     continue
-                args['partner_id'] = authenticated_partner_id
+                args["partner_id"] = authenticated_partner_id
 
             _logger.info(
                 "MCP: round %d — calling tool '%s' with args %s",
-                round_number + 1, tool_name, args,
+                round_number + 1,
+                tool_name,
+                args,
             )
 
             result_content = (
@@ -244,51 +364,64 @@ async def _async_process_message(user_message, history, authenticated_partner_id
             # When verify_email_otp succeeds, upgrade authenticated_partner_id
             # in-flight so that any auth-required tool the LLM calls in subsequent
             # rounds of THIS same turn uses the verified partner.
-            if tool_name == 'verify_email_otp':
+            if tool_name == "verify_email_otp":
                 try:
-                    raw = result_content[0].text if result_content else '{}'
+                    raw = result_content[0].text if result_content else "{}"
                     data = json.loads(raw)
-                    if data.get('success') and data.get('partner_id'):
-                        authenticated_partner_id = data['partner_id']
-                        verified_partner_id = data['partner_id']
+                    if data.get("success") and data.get("partner_id"):
+                        authenticated_partner_id = data["partner_id"]
+                        verified_partner_id = data["partner_id"]
                 except Exception as exc:
-                    _logger.debug("MCP: failed to parse verify_email_otp result: %s", exc)
+                    _logger.debug(
+                        "MCP: failed to parse verify_email_otp result: %s", exc
+                    )
 
-            conversation.append({
-                "role":         "tool",
-                "tool_call_id": tool_call.id,
-                "name":         tool_name,
-                "content":      result_text,
-            })
+            conversation.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_name,
+                    "content": result_text,
+                }
+            )
 
     # Safety fallback — cap reached, force a plain text reply.
     # Omit tools entirely so the model cannot attempt another tool call
     # (Groq returns 400 if the model generates a call with tool_choice="none").
-    _logger.warning("MCP: tool round cap (%d) reached, forcing final reply", max_tool_rounds)
-    # Tell the model it has no more tools so it doesn't hallucinate a call                                  
-    # (Groq returns 400 when the model generates a tool call with tool_choice="none").                      
-    conversation.append({                                                                                   
-        "role": "user",                                                                                     
-        "content": (                                                                                        
-            "You have no tools available. Summarise what you have done so far "                             
-            "and respond to the user in plain text only."                                                   
-        ),                                                                                                  
-    })                                                                                                      
-  
+    _logger.warning(
+        "MCP: tool round cap (%d) reached, forcing final reply", max_tool_rounds
+    )
+    # Tell the model it has no more tools so it doesn't hallucinate a call
+    # (Groq returns 400 when the model generates a tool call with tool_choice="none").
+    conversation.append(
+        {
+            "role": "user",
+            "content": (
+                "You have no tools available. Summarise what you have done so far "
+                "and respond to the user in plain text only."
+            ),
+        }
+    )
+
     try:
         final_response = await client.chat.completions.create(
             model=model_name,
             messages=conversation,
             temperature=0.7,
-        )                                                                                                   
+        )
         final_msg = final_response.choices[0].message
-        reply = final_msg.content or getattr(final_msg, 'reasoning_content', '') or getattr(final_msg, 'reasoning', '') or ""
-        return reply, verified_partner_id                         
-    except Exception as exc:                                                                                
-        _logger.warning("MCP: fallback completion also failed: %s", exc)                                    
-        return (                                                                                            
-            "I've looked into your request but wasn't able to finish processing. "                          
-            "Could you please try rephrasing or simplifying your question?"                                 
+        reply = (
+            final_msg.content
+            or getattr(final_msg, "reasoning_content", "")
+            or getattr(final_msg, "reasoning", "")
+            or ""
+        )
+        return reply, verified_partner_id
+    except Exception as exc:
+        _logger.warning("MCP: fallback completion also failed: %s", exc)
+        return (
+            "I've looked into your request but wasn't able to finish processing. "
+            "Could you please try rephrasing or simplifying your question?"
         ), verified_partner_id
 
 
@@ -296,12 +429,13 @@ async def _async_process_message(user_message, history, authenticated_partner_id
 # Odoo Model
 # ---------------------------------------------------------------------------
 
+
 class MCPClientService(models.AbstractModel):
     _name = "mcp.client.service"
     _description = "MCP Client Service"
 
     def _get_param(self, key, default=None):
-        return self.env['ir.config_parameter'].sudo().get_param(key, default)
+        return self.env["ir.config_parameter"].sudo().get_param(key, default)
 
     @api.model
     def ensure_initialized(self):
@@ -314,7 +448,7 @@ class MCPClientService(models.AbstractModel):
             if _initialized:
                 return
 
-            server_url = self._get_param('mcp_chatbot.mcp_server_url')
+            server_url = self._get_param("mcp_chatbot.mcp_server_url")
             _logger.info("MCP: initialising client → %s", server_url)
 
             try:
@@ -328,17 +462,17 @@ class MCPClientService(models.AbstractModel):
     @api.model
     def _get_llm_settings(self):
         """Read all LLM-related settings from ir.config_parameter."""
-        param = self.env['ir.config_parameter'].sudo()
-        LlmModel = self.env['mcp.llm.model']
+        param = self.env["ir.config_parameter"].sudo()
+        LlmModel = self.env["mcp.llm.model"]
 
-        api_key      = param.get_param('mcp_chatbot.api_key', '')
-        base_url     = param.get_param('mcp_chatbot.base_url', '')
-        system_prompt = param.get_param('mcp_chatbot.system_prompt', '')
-        max_tool_rounds = int(param.get_param('mcp_chatbot.max_tool_rounds', 5))
+        api_key = param.get_param("mcp_chatbot.api_key", "")
+        base_url = param.get_param("mcp_chatbot.base_url", "")
+        system_prompt = param.get_param("mcp_chatbot.system_prompt", "")
+        max_tool_rounds = int(param.get_param("mcp_chatbot.max_tool_rounds", 5))
 
         # Resolve LLM model name from Many2one (combine provider/model if provider set)
-        model_name = ''
-        llm_model_id = param.get_param('mcp_chatbot.llm_model_id')
+        model_name = ""
+        llm_model_id = param.get_param("mcp_chatbot.llm_model_id")
         if llm_model_id:
             record = LlmModel.browse(int(llm_model_id))
             if record.exists():
@@ -349,15 +483,17 @@ class MCPClientService(models.AbstractModel):
                 )
 
         return {
-            'api_key':        api_key,
-            'base_url':       base_url,
-            'model_name':     model_name,
-            'system_prompt':  system_prompt,
-            'max_tool_rounds': max_tool_rounds,
+            "api_key": api_key,
+            "base_url": base_url,
+            "model_name": model_name,
+            "system_prompt": system_prompt,
+            "max_tool_rounds": max_tool_rounds,
         }
 
     @api.model
-    def process_message(self, user_message, history, authenticated_partner_id=None, session_id=None):
+    def process_message(
+        self, user_message, history, authenticated_partner_id=None, session_id=None
+    ):
         self.ensure_initialized()
         settings = self._get_llm_settings()
 
@@ -368,11 +504,11 @@ class MCPClientService(models.AbstractModel):
                     history,
                     authenticated_partner_id,
                     session_id,
-                    api_key=settings['api_key'],
-                    base_url=settings['base_url'],
-                    model_name=settings['model_name'],
-                    system_prompt=settings['system_prompt'],
-                    max_tool_rounds=settings['max_tool_rounds'],
+                    api_key=settings["api_key"],
+                    base_url=settings["base_url"],
+                    model_name=settings["model_name"],
+                    system_prompt=settings["system_prompt"],
+                    max_tool_rounds=settings["max_tool_rounds"],
                 )
             )
             return reply, verified_partner_id
@@ -386,15 +522,17 @@ class MCPClientService(models.AbstractModel):
     @api.model
     def _get_summary_settings(self):
         """Read summary-specific LLM settings, falling back to main settings."""
-        param = self.env['ir.config_parameter'].sudo()
-        LlmModel = self.env['mcp.llm.model']
+        param = self.env["ir.config_parameter"].sudo()
+        LlmModel = self.env["mcp.llm.model"]
         main = self._get_llm_settings()
 
-        api_key  = param.get_param('mcp_chatbot.summary_api_key', '') or main['api_key']
-        base_url = param.get_param('mcp_chatbot.summary_base_url', '') or main['base_url']
+        api_key = param.get_param("mcp_chatbot.summary_api_key", "") or main["api_key"]
+        base_url = (
+            param.get_param("mcp_chatbot.summary_base_url", "") or main["base_url"]
+        )
 
-        model_name = ''
-        summary_model_id = param.get_param('mcp_chatbot.summary_model_id')
+        model_name = ""
+        summary_model_id = param.get_param("mcp_chatbot.summary_model_id")
         if summary_model_id:
             record = LlmModel.browse(int(summary_model_id))
             if record.exists():
@@ -404,9 +542,9 @@ class MCPClientService(models.AbstractModel):
                     else record.name
                 )
         if not model_name:
-            model_name = main['model_name']
+            model_name = main["model_name"]
 
-        return {'api_key': api_key, 'base_url': base_url, 'model_name': model_name}
+        return {"api_key": api_key, "base_url": base_url, "model_name": model_name}
 
     @api.model
     def summarize_history(self, history):
@@ -415,11 +553,9 @@ class MCPClientService(models.AbstractModel):
 
         settings = self._get_summary_settings()
 
-        client = _get_sync_client(settings['api_key'], settings['base_url'])
+        client = _get_sync_client(settings["api_key"], settings["base_url"])
 
-        formatted = "\n".join(
-            f"[{m['role'].upper()}]: {m['content']}" for m in history
-        )
+        formatted = "\n".join(f"[{m['role'].upper()}]: {m['content']}" for m in history)
 
         messages = [
             {
@@ -449,7 +585,7 @@ class MCPClientService(models.AbstractModel):
         ]
 
         response = client.chat.completions.create(
-            model=settings['model_name'],
+            model=settings["model_name"],
             messages=messages,
             temperature=0.3,
         )
