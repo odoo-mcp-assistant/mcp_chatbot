@@ -107,6 +107,21 @@
                         </setting>
                     </block>
 
+                    <!-- FastAPI Sidecar -->
+                    <block title="FastAPI Sidecar"
+                           name="mcp_chatbot_sidecar">
+                        <setting string="FastAPI Base URL"
+                                 help="Base URL of the mcp_chatbot_api FastAPI service the widget calls directly (e.g. http://localhost:8020)."
+                                 id="chatbot_api_base_url_setting">
+                            <field name="chatbot_api_base_url" style="width: 100%;"/>
+                        </setting>
+                        <setting string="JWT Secret"
+                                 help="Shared secret used to sign JWTs issued to the widget. MUST match JWT_SECRET in mcp_chatbot_api/.env. Generate with: python -c &quot;import secrets; print(secrets.token_urlsafe(48))&quot;"
+                                 id="chatbot_jwt_secret_setting">
+                            <field name="chatbot_jwt_secret" password="True" style="width: 100%;"/>
+                        </setting>
+                    </block>
+
                     <!-- Session Management -->
                     <block title="Session Management"
                            name="mcp_chatbot_session">

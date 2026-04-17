@@ -22,42 +22,19 @@
     (function () {
         'use strict';
 
-        function getOdooUid() {
-            // Make synchronous RPC call to backend to get the actual UID
-            var result = null;
+        // ──────────────────────────────────────────────────────────────
+        // FastAPI sidecar bootstrap
+        //
+        // Chat traffic (message/history/close/info) goes directly to the
+        // FastAPI service. The widget calls Odoo ONCE on load to mint a
+        // short-lived JWT; after that Odoo is out of the request path.
+        // ──────────────────────────────────────────────────────────────
+        var apiBaseUrl = '';       // populated by fetchJwtSync()
+        var jwtToken = '';         // populated by fetchJwtSync()
+        var jwtPartnerId = null;   // null for anonymous users
 
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', '/mcp_chatbot/get_uid', false);
-            xhr.setRequestHeader('Content-Type', 'application/json');
-
-            var payload = JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'call',
-                id: Date.now(),
-                params: {}
-            });
-
-            xhr.send(payload);
-
-            if (xhr.status === 200) {
-                try {
-                    var response = JSON.parse(xhr.responseText);
-                    if (response && response.result && response.result.uid) {
-                        result = response.result.uid;
-                    }
-                } catch (e) {
-                    console.error('[mcp_chatbot] Failed to parse UID response:', e);
-                }
-            }
-            return result || '0';   // 0 = public/anonymous in Odoo
-        }
-
-        var uid = getOdooUid();
-
-        // Token key scoped to uid — different users get completely
-        // different sessionStorage entries.
-        var TOKEN_KEY = 'mcp_chatbot_token_' + uid;
-        var OPEN_KEY  = 'mcp_chatbot_open_'  + uid;
+        var ANON_TOKEN_KEY = 'mcp_chatbot_anon_token';
+        var OPEN_KEY       = 'mcp_chatbot_open';
 
         // ──────────────────────────────────────────────────────────────
         // Helpers
@@ -74,42 +51,91 @@
             });
         }
 
-        function getSessionToken() {
-            // For logged-in users, no token is used.
-            if (uid !== '0') {
-                return null;
+        function getOrCreateAnonToken() {
+            var tok = sessionStorage.getItem(ANON_TOKEN_KEY);
+            if (!tok) {
+                tok = uuidv4();
+                sessionStorage.setItem(ANON_TOKEN_KEY, tok);
             }
-
-            var token = sessionStorage.getItem(TOKEN_KEY);
-            if (!token) {
-                token = uuidv4();
-                sessionStorage.setItem(TOKEN_KEY, token);
-            }
-            return token;
+            return tok;
         }
 
-        function clearSessionToken() {
-            sessionStorage.removeItem(TOKEN_KEY);
+        function clearAnonSession() {
+            sessionStorage.removeItem(ANON_TOKEN_KEY);
             sessionStorage.removeItem(OPEN_KEY);
         }
 
-        function jsonRpc(url, params) {
-            return fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    method: 'call',
-                    id: Date.now(),
-                    params: params,
-                }),
-            })
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    if (data.error) { throw new Error(data.error.message || 'RPC error'); }
-                    return data.result;
-                });
+        // Synchronous call to Odoo to mint a JWT for this caller.
+        // Called on page load and again whenever FastAPI returns 401 or
+        // an anonymous session has been rotated.
+        function fetchJwtSync() {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/mcp_chatbot/auth/token', false);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'call',
+                id: Date.now(),
+                params: { session_token: getOrCreateAnonToken() },
+            }));
+            if (xhr.status !== 200) {
+                console.error('[mcp_chatbot] auth/token HTTP ' + xhr.status);
+                return false;
+            }
+            try {
+                var data = JSON.parse(xhr.responseText);
+                if (!data || !data.result || !data.result.token) {
+                    console.error('[mcp_chatbot] auth/token bad response:', data);
+                    return false;
+                }
+                apiBaseUrl    = (data.result.api_base_url || '').replace(/\/+$/, '');
+                jwtToken      = data.result.token;
+                jwtPartnerId  = data.result.partner_id || null;
+                return true;
+            } catch (e) {
+                console.error('[mcp_chatbot] auth/token parse error:', e);
+                return false;
+            }
         }
+
+        // All chat traffic goes through here. Adds Authorization header,
+        // refreshes the JWT once on 401 and retries.
+        function apiRequest(path, body) {
+            function doFetch() {
+                return fetch(apiBaseUrl + path, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + jwtToken,
+                    },
+                    body: JSON.stringify(body || {}),
+                });
+            }
+            return doFetch().then(function (res) {
+                if (res.status === 401) {
+                    if (!fetchJwtSync()) { throw new Error('JWT refresh failed'); }
+                    return doFetch().then(function (r2) {
+                        if (!r2.ok) { throw new Error('HTTP ' + r2.status); }
+                        return r2.json();
+                    });
+                }
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.json();
+            });
+        }
+
+        // Called when the backend reports the session no longer exists.
+        // For anonymous users we rotate the session_token and re-mint the
+        // JWT so the next message starts a fresh backend session.
+        function handleSessionGone() {
+            if (!jwtPartnerId) {
+                clearAnonSession();
+                fetchJwtSync();
+            }
+        }
+
+        // Bootstrap — block until we have a JWT + apiBaseUrl.
+        fetchJwtSync();
 
         // ──────────────────────────────────────────────────────────────
         // Markdown renderer
@@ -420,17 +446,12 @@
         // Load history from backend
         // ──────────────────────────────────────────────────────────────
 
-        function loadHistoryFromBackend(token, container, callback) {
-            var payload = {};
-            if (token) {
-                payload.session_token = token;
-            }
-            jsonRpc('/mcp_chatbot/history', payload)
+        function loadHistoryFromBackend(container, callback) {
+            apiRequest('/mcp_chatbot/history', {})
                 .then(function (result) {
-                    // If session is closed or not found, reset the token
+                    // If session is closed or not found, rotate anon token
                     if (!result || result.status === 'closed' || result.status === 'not_found') {
-                        clearSessionToken();
-                        sessionToken = getSessionToken();
+                        handleSessionGone();
                         container.innerHTML = '';
                         renderHero(container);
                         if (callback) { callback(false); }
@@ -586,7 +607,7 @@
 
         // Fetch bot metadata once on page load — populates header title, tooltip, status badge,
         // and the hero greeting identity.
-        jsonRpc('/mcp_chatbot/info', {})
+        apiRequest('/mcp_chatbot/info', {})
             .then(function (result) {
                 if (!result) { return; }
                 if (result.bot_name) { updateHeaderName(result.bot_name); }
@@ -604,9 +625,6 @@
         // ──────────────────────────────────────────────────────────────
         // Widget initialisation
         // ──────────────────────────────────────────────────────────────
-
-        // These are declared here so sendMessage can access them
-        var sessionToken = null;
 
         function initChatbot() {
             if (window.__mcpChatbotInit) { return; }
@@ -626,7 +644,6 @@
 
             if (!bubble || !chatWin || !msgArea || !input || !sendBtn) { return; }
 
-            sessionToken = getSessionToken();
             var isOpen   = sessionStorage.getItem(OPEN_KEY) === '1';
 
             // ── Bubble tooltip hover ──────────────────────────────────
@@ -663,7 +680,7 @@
                 // If there is already DOM content, it means the user just
                 // minimised — keep it as-is.
                 if (msgArea.children.length === 0) {
-                    loadHistoryFromBackend(sessionToken, msgArea, function (hasSession) {
+                    loadHistoryFromBackend(msgArea, function (hasSession) {
                         setEndSessionVisible(hasSession);
                         input.focus();
                     });
@@ -724,20 +741,16 @@
                 confirmYes.addEventListener('click', function () {
                     confirmOverlay.classList.add('d-none');
                     var payload = {};
-                    if (sessionToken) {
-                        payload.session_token = sessionToken;
-                    }
                     if (selectedRating !== null) {
                         payload.rating = selectedRating;
                     }
                     if (feedbackArea && feedbackArea.value.trim()) {
                         payload.feedback = feedbackArea.value.trim();
                     }
-                    jsonRpc('/mcp_chatbot/close', payload)
+                    apiRequest('/mcp_chatbot/close', payload)
                         .then(function () {
                             setEndSessionVisible(false);
-                            clearSessionToken();
-                            sessionToken = getSessionToken();
+                            handleSessionGone();
                             chatWin.classList.add('d-none');
                             bubble.classList.remove('d-none');
                             isOpen = false;
@@ -780,18 +793,13 @@
 
                 var typingEl = showTyping(msgArea);
 
-                var payload = { message: text };
-                // Include session_token only for anonymous users
-                if (sessionToken) {
-                    payload.session_token = sessionToken;
-                }
                 function unlockSend() {
                     sendBtn.disabled = false;
                     updateSendVisibility();
                     input.focus();
                 }
 
-                jsonRpc('/mcp_chatbot/message', payload)
+                apiRequest('/mcp_chatbot/message', { message: text })
                     .then(function (result) {
                         if (typingEl) { typingEl.remove(); typingEl = null; }
 

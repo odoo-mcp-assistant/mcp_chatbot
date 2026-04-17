@@ -106,6 +106,21 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ------------------------------------------------------------------ #
+    # FastAPI Sidecar                                                      #
+    # ------------------------------------------------------------------ #
+
+    chatbot_api_base_url = fields.Char(
+        string="FastAPI Base URL",
+        config_parameter='mcp_chatbot.api_base_url',
+        default='http://localhost:8020',
+    )
+
+    chatbot_jwt_secret = fields.Char(
+        string="JWT Secret",
+        config_parameter='mcp_chatbot.jwt_secret',
+    )
+
+    # ------------------------------------------------------------------ #
     # Onchange: clear model when provider changes                         #
     # ------------------------------------------------------------------ #
 

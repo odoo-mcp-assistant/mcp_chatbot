@@ -40,6 +40,9 @@
             'mcp_chatbot/static/src/js/chatbot_widget.js',
         ],
     },
+    'external_dependencies': {
+        'python': ['jose'],
+    },
     'installable': True,
     'application': True,
     'license': 'LGPL-3',
