@@ -1,16 +1,15 @@
 {
     'name': 'MCP Chatbot',
     'version': '18.0.1.0.0',
-    'summary': 'Standalone AI chatbot powered by MCP — website bubble, session tracking, LLM pipeline',
+    'summary': 'AI chatbot — website bubble + Odoo-side session storage and settings for the FastAPI sidecar (mcp_chatbot_api)',
     'description': """
-        Self-contained chatbot module. No external addon dependency.
-        Includes:
-        - BaseHTTPMCPClient       (from odoo_mcp_addon/models/base_client.py)
-        - MCPClientService        (from odoo_mcp_addon/models/mcp_client_service.py)
-        - Chatbot session + message models
+        Odoo-side half of the MCP chatbot. The LLM + MCP agentic loop runs
+        in the separate mcp_chatbot_api FastAPI service; this addon provides:
+        - Chatbot session + message + user-fact models
         - Floating website bubble (injected via website.layout)
-        - JSON controller for frontend ↔ backend communication
-        - Cron job to close idle sessions after 30 minutes
+        - JWT issuer controller so the widget can call FastAPI directly
+        - Settings UI (ir.config_parameter) consumed by the FastAPI service
+        - Cron job to close idle sessions
     """,
     'author': 'Custom',
     'category': 'Website',
