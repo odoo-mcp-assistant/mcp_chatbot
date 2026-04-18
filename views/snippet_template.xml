@@ -91,6 +91,15 @@
                     </div>
                 </div>
 
+                <!-- Capabilities CTA — shown on the landing page for everyone -->
+                <div id="mcp_chatbot_capabilities_wrap" class="mcp-chatbot-capabilities-wrap">
+                    <button class="mcp-chatbot-suggestion mcp-chatbot-capabilities"
+                            data-query="Give me a quick tour of what you can do — list your main capabilities with a short example for each.">
+                        <i class="fa fa-magic"/>
+                        <span>Get to know me — see what I can do</span>
+                    </button>
+                </div>
+
                 <!-- Suggestion chips — authenticated users -->
                 <div id="mcp_chatbot_suggestions_auth" class="mcp-chatbot-suggestions mcp-suggestions-auth">
                     <button class="mcp-chatbot-suggestion" data-query="Show me my orders">

@@ -772,6 +772,39 @@
     transform: scale(0.97);
 }
 
+/* ── Capabilities CTA (landing page "get to know me" widget) ──── */
+.mcp-chatbot-capabilities-wrap {
+    display: none;
+    padding: 4px 12px 6px;
+    box-sizing: border-box;
+}
+.mcp-chatbot-window.mcp-is-empty .mcp-chatbot-capabilities-wrap {
+    display: flex;
+}
+.mcp-chatbot-suggestion.mcp-chatbot-capabilities {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    background: linear-gradient(135deg, #5ba7d2 0%, #4d8eb3 45%, #1e4a6b 100%);
+    border: none;
+    border-radius: 16px;
+    gap: 8px;
+    box-shadow: 0 2px 8px rgba(30, 74, 107, 0.18);
+    transition: box-shadow 0.15s, transform 0.1s, filter 0.15s;
+}
+.mcp-chatbot-suggestion.mcp-chatbot-capabilities i {
+    font-size: 14px;
+    color: #ffffff;
+}
+.mcp-chatbot-suggestion.mcp-chatbot-capabilities:hover {
+    background: linear-gradient(135deg, #5ba7d2 0%, #4d8eb3 45%, #1e4a6b 100%);
+    border: none;
+    filter: brightness(1.06);
+    box-shadow: 0 4px 12px rgba(30, 74, 107, 0.28);
+}
+
 /* ── Mobile responsive ────────────────────────────────────────── */
 @media (max-width: 480px) {
     .mcp-chatbot-window {
