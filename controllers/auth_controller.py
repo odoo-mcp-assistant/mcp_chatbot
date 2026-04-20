@@ -8,14 +8,17 @@ caller (partner_id for logged-in users, session_token for anonymous),
 and hand the widget both the token and the FastAPI base URL. The widget
 then talks to FastAPI directly for the rest of the conversation.
 
-The secret and audience live in ir.config_parameter and must match the
-values in mcp_chatbot_api/.env (JWT_SECRET, JWT_AUDIENCE, JWT_ALGORITHM).
+The secret, algorithm, audience and FastAPI base URL are loaded from
+the addon's `.env` file (see services/env_config.py). They must match
+the values in mcp_chatbot_api/.env.
 """
 import logging
 import time
 
 from odoo import http
 from odoo.http import request
+
+from ..services import env_config
 
 try:
     from jose import jwt
@@ -41,19 +44,18 @@ class AuthController(http.Controller):
             _logger.error("auth/token: python-jose is not installed")
             return {'error': 'python-jose not installed on Odoo server'}
 
-        param = request.env['ir.config_parameter'].sudo()
-        secret = param.get_param('mcp_chatbot.jwt_secret')
-        algorithm = param.get_param('mcp_chatbot.jwt_algorithm') or 'HS256'
-        audience = param.get_param('mcp_chatbot.jwt_audience') or 'mcp-chatbot-api'
-        api_base_url = param.get_param('mcp_chatbot.api_base_url') or ''
-        ttl_seconds = int(param.get_param('mcp_chatbot.jwt_ttl_seconds') or 3600)
+        secret = env_config.get('JWT_SECRET')
+        algorithm = env_config.get('JWT_ALGORITHM', 'HS256')
+        audience = env_config.get('JWT_AUDIENCE', 'mcp-chatbot-api')
+        api_base_url = env_config.get('API_BASE_URL', '')
+        ttl_seconds = int(env_config.get('JWT_TTL_SECONDS', '3600'))
 
         if not secret:
-            _logger.error("auth/token: mcp_chatbot.jwt_secret is not set")
-            return {'error': 'jwt_secret not configured in Odoo'}
+            _logger.error("auth/token: JWT_SECRET is not set in .env")
+            return {'error': 'JWT_SECRET not configured'}
         if not api_base_url:
-            _logger.error("auth/token: mcp_chatbot.api_base_url is not set")
-            return {'error': 'api_base_url not configured in Odoo'}
+            _logger.error("auth/token: API_BASE_URL is not set in .env")
+            return {'error': 'API_BASE_URL not configured'}
 
         user = request.env.user
         partner_id = None

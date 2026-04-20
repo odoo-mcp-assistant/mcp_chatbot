@@ -4,6 +4,8 @@ import requests
 
 from odoo import api, fields, models
 
+from ..services import env_config
+
 _logger = logging.getLogger(__name__)
 
 
@@ -112,21 +114,6 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ------------------------------------------------------------------ #
-    # FastAPI Sidecar                                                      #
-    # ------------------------------------------------------------------ #
-
-    chatbot_api_base_url = fields.Char(
-        string="FastAPI Base URL",
-        config_parameter='mcp_chatbot.api_base_url',
-        default='http://localhost:8020',
-    )
-
-    chatbot_jwt_secret = fields.Char(
-        string="JWT Secret",
-        config_parameter='mcp_chatbot.jwt_secret',
-    )
-
-    # ------------------------------------------------------------------ #
     # Onchange: clear model when provider changes                         #
     # ------------------------------------------------------------------ #
 
@@ -205,7 +192,7 @@ class ResConfigSettings(models.TransientModel):
         )
 
         # notify FastAPI to reload its config snapshot
-        api_base_url = param.get_param('mcp_chatbot.api_base_url') or ''
+        api_base_url = env_config.get('API_BASE_URL', '')
         if api_base_url:
             try:
                 requests.post(f"{api_base_url}/reload_config", timeout=5)
