@@ -595,24 +595,10 @@
     background: transparent;
     resize: none;
     font-family: inherit;
+    box-sizing: border-box;
+    height: 24px;                /* stable 1-line baseline — prevents initial layout jump */
     max-height: 44px;            /* ~ 2 lines at 14px / 1.4 */
     overflow-y: auto;
-}
-
-/* FIX: stabilize textarea height in multi-row layout */
-.mcp-chatbot-input {
-    min-height: 20px;
-}
-
-/* When empty (column mode), prevent flex shrink glitches */
-.mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input {
-    width: 100%;
-    flex: none;
-}
-
-/* Prevent scrollbars when not needed */
-.mcp-chatbot-input {
-    overflow-y: hidden;
 }
 
 .mcp-chatbot-input:disabled {

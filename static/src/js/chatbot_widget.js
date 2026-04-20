@@ -881,8 +881,12 @@
             // ── Auto-resize the textarea, capped at 2 lines ───────────
             function autoResizeInput() {
                 input.style.height = 'auto';
+                var sh = input.scrollHeight;
+                // Bail if hidden (scrollHeight is 0) — otherwise we'd pin
+                // height: 0px and collapse the textarea once it becomes visible.
+                if (!sh) { return; }
                 var max = 44; // keep in sync with .mcp-chatbot-input max-height
-                input.style.height = Math.min(input.scrollHeight, max) + 'px';
+                input.style.height = Math.min(sh, max) + 'px';
             }
             autoResizeInput();
             input.addEventListener('input', autoResizeInput);
