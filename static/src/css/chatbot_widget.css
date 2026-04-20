@@ -599,6 +599,22 @@
     overflow-y: auto;
 }
 
+/* FIX: stabilize textarea height in multi-row layout */
+.mcp-chatbot-input {
+    min-height: 20px;
+}
+
+/* When empty (column mode), prevent flex shrink glitches */
+.mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input {
+    width: 100%;
+    flex: none;
+}
+
+/* Prevent scrollbars when not needed */
+.mcp-chatbot-input {
+    overflow-y: hidden;
+}
+
 .mcp-chatbot-input:disabled {
     color: #9ca3af;
     cursor: not-allowed;
@@ -615,15 +631,6 @@
     justify-content: flex-end;
     margin-top: 0;
     flex-shrink: 0;
-}
-
-/* FIX: stabilize multi-row layout between empty and non-empty states */
-.mcp-chatbot-input-actions {
-    width: auto;
-}
-
-.mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input-actions {
-    width: 100%;
 }
 
 /* Empty/hero state: keep the roomier 2-row composer
