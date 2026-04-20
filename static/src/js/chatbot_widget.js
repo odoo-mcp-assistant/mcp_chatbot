@@ -545,8 +545,22 @@
             sub.className = 'mcp-chatbot-hero-sub';
             sub.textContent = g.sub;
 
+            var badge = document.createElement('button');
+            badge.type = 'button';
+            badge.className = 'mcp-chatbot-suggestion mcp-chatbot-capabilities';
+            badge.setAttribute(
+                'data-query',
+                'Give me a quick tour of what you can do — list your main capabilities with a short example for each.'
+            );
+            badge.innerHTML = (
+                '<i class="fa fa-magic mcp-cap-icon-magic"></i>' +
+                '<span>Get to know me</span>' +
+                '<i class="fa fa-arrow-right mcp-cap-icon-arrow"></i>'
+            );
+
             wrap.appendChild(primary);
             wrap.appendChild(sub);
+            wrap.appendChild(badge);
             container.appendChild(wrap);
         }
 
@@ -595,7 +609,7 @@
                 }
                 if (inputEl) {
                     inputEl.disabled    = false;
-                    inputEl.placeholder = 'Type your message...';
+                    inputEl.placeholder = 'Ask AI anything...';
                 }
                 if (sendEl)  { sendEl.disabled = false; }
                 if (wrapperEl) { wrapperEl.classList.remove('disabled'); }
@@ -788,6 +802,7 @@
 
                 appendMessage(msgArea, 'user', text);
                 input.value = '';
+                autoResizeInput();
                 sendBtn.disabled = true;
                 updateSendVisibility();
 
@@ -840,6 +855,17 @@
                 });
             });
 
+            // Capabilities badge is rendered dynamically inside the hero,
+            // so we delegate the click from the message container.
+            msgArea.addEventListener('click', function (e) {
+                var badge = e.target.closest && e.target.closest('.mcp-chatbot-capabilities');
+                if (!badge || sendBtn.disabled) { return; }
+                var query = badge.getAttribute('data-query') || badge.textContent.trim();
+                input.value = query;
+                updateSendVisibility();
+                sendMessage();
+            });
+
             // ── Send button visibility (hide when input is empty) ─────
             function updateSendVisibility() {
                 if (input.value.trim().length > 0) {
@@ -848,18 +874,27 @@
                     sendBtn.classList.add('mcp-send-hidden');
                 }
             }
-            // Start hidden
+            // Start silent (visible but unclickable while input is empty)
             sendBtn.classList.add('mcp-send-hidden');
             input.addEventListener('input', updateSendVisibility);
 
+            // ── Auto-resize the textarea, capped at 2 lines ───────────
+            function autoResizeInput() {
+                input.style.height = 'auto';
+                var max = 44; // keep in sync with .mcp-chatbot-input max-height
+                input.style.height = Math.min(input.scrollHeight, max) + 'px';
+            }
+            autoResizeInput();
+            input.addEventListener('input', autoResizeInput);
+
             input.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
-                    // Always preventDefault to suppress any default Enter
-                    // behaviour (form submit, newline insertion). The
-                    // re-entrancy guard inside sendMessage() handles the
-                    // "still in flight" case.
+                    // Always preventDefault to suppress the default newline;
+                    // Shift+Enter still inserts a line break. The re-entrancy
+                    // guard inside sendMessage() handles the "still in flight" case.
                     e.preventDefault();
                     sendMessage();
+                    autoResizeInput();
                 }
             });
         }

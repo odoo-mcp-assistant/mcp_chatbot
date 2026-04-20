@@ -80,24 +80,17 @@
                 <!-- Input area -->
                 <div class="mcp-chatbot-input-area">
                     <div class="mcp-chatbot-input-wrapper">
-                        <input id="mcp_chatbot_input"
-                               type="text"
-                               class="mcp-chatbot-input"
-                               placeholder="Type your message..."
-                               autocomplete="off"/>
-                        <button id="mcp_chatbot_send" class="mcp-chatbot-send" title="Send">
-                            <i class="fa fa-paper-plane"/>
-                        </button>
+                        <textarea id="mcp_chatbot_input"
+                                  class="mcp-chatbot-input"
+                                  placeholder="Type your message..."
+                                  rows="1"
+                                  autocomplete="off"/>
+                        <div class="mcp-chatbot-input-actions">
+                            <button id="mcp_chatbot_send" class="mcp-chatbot-send" title="Send">
+                                <i class="fa fa-arrow-up"/>
+                            </button>
+                        </div>
                     </div>
-                </div>
-
-                <!-- Capabilities CTA — shown on the landing page for everyone -->
-                <div id="mcp_chatbot_capabilities_wrap" class="mcp-chatbot-capabilities-wrap">
-                    <button class="mcp-chatbot-suggestion mcp-chatbot-capabilities"
-                            data-query="Give me a quick tour of what you can do — list your main capabilities with a short example for each.">
-                        <i class="fa fa-magic"/>
-                        <span>Get to know me — see what I can do</span>
-                    </button>
                 </div>
 
                 <!-- Suggestion chips — authenticated users -->
