@@ -617,6 +617,15 @@
     flex-shrink: 0;
 }
 
+/* FIX: stabilize multi-row layout between empty and non-empty states */
+.mcp-chatbot-input-actions {
+    width: auto;
+}
+
+.mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input-actions {
+    width: 100%;
+}
+
 /* Empty/hero state: keep the roomier 2-row composer
    (textarea on top, dedicated action row underneath). */
 .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input-wrapper {
