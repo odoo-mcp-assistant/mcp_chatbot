@@ -1,4 +1,10 @@
+import logging
+
+import requests
+
 from odoo import api, fields, models
+
+_logger = logging.getLogger(__name__)
 
 
 class ResConfigSettings(models.TransientModel):
@@ -197,3 +203,12 @@ class ResConfigSettings(models.TransientModel):
             'mcp_chatbot.summary_model_id',
             self.chatbot_summary_model_id.id or False,
         )
+
+        # notify FastAPI to reload its config snapshot
+        api_base_url = param.get_param('mcp_chatbot.api_base_url') or ''
+        if api_base_url:
+            try:
+                requests.post(f"{api_base_url}/reload_config", timeout=5)
+                _logger.info("set_values: FastAPI config reloaded at %s", api_base_url)
+            except Exception as exc:
+                _logger.warning("set_values: failed to reload FastAPI config: %s", exc)
