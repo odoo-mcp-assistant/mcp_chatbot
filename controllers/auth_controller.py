@@ -40,10 +40,7 @@ class AuthController(http.Controller):
     )
     def issue_token(self, session_token=None, **kwargs):
         """Return `{token, api_base_url, partner_id, expires_in}`."""
-        if jwt is None:
-            _logger.error("auth/token: python-jose is not installed")
-            return {'error': 'python-jose not installed on Odoo server'}
-
+        
         secret = env_config.get('JWT_SECRET')
         algorithm = env_config.get('JWT_ALGORITHM', 'HS256')
         audience = env_config.get('JWT_AUDIENCE', 'mcp-chatbot-api')
