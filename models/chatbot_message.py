@@ -55,9 +55,3 @@ class ChatbotMessage(models.Model):
         string='Visitor',
         store=True,
     )
-
-    session_token = fields.Char(
-        related='session_id.session_token',
-        string='Session Token',
-        store=True,
-    )
