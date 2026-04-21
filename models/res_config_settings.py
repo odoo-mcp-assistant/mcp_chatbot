@@ -89,6 +89,30 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ------------------------------------------------------------------ #
+    # Fact Extraction                                                      #
+    # ------------------------------------------------------------------ #
+
+    chatbot_fact_provider_id = fields.Many2one(
+        comodel_name='mcp.llm.provider',
+        string="Fact Extraction Provider",
+    )
+
+    chatbot_fact_model_id = fields.Many2one(
+        comodel_name='mcp.llm.model',
+        string="Fact Extraction Model",
+    )
+
+    chatbot_fact_api_key = fields.Char(
+        string="Fact Extraction API Key",
+        config_parameter='mcp_chatbot.fact_api_key',
+    )
+
+    chatbot_fact_base_url = fields.Char(
+        string="Fact Extraction Base URL",
+        config_parameter='mcp_chatbot.fact_base_url',
+    )
+
+    # ------------------------------------------------------------------ #
     # MCP Server                                                           #
     # ------------------------------------------------------------------ #
 
@@ -131,6 +155,13 @@ class ResConfigSettings(models.TransientModel):
                 and self.chatbot_summary_model_id.provider_id != self.chatbot_summary_provider_id):
             self.chatbot_summary_model_id = False
 
+    @api.onchange('chatbot_fact_provider_id')
+    def _onchange_fact_provider(self):
+        if (self.chatbot_fact_model_id
+                and self.chatbot_fact_provider_id
+                and self.chatbot_fact_model_id.provider_id != self.chatbot_fact_provider_id):
+            self.chatbot_fact_model_id = False
+
     # ------------------------------------------------------------------ #
     # get_values / set_values for Many2one fields                         #
     # ------------------------------------------------------------------ #
@@ -169,6 +200,20 @@ class ResConfigSettings(models.TransientModel):
         else:
             res['chatbot_summary_model_id'] = False
 
+        # Fact extraction provider
+        fact_provider_id = param.get_param('mcp_chatbot.fact_provider_id')
+        if fact_provider_id and LlmProvider.browse(int(fact_provider_id)).exists():
+            res['chatbot_fact_provider_id'] = int(fact_provider_id)
+        else:
+            res['chatbot_fact_provider_id'] = False
+
+        # Fact extraction model
+        fact_model_id = param.get_param('mcp_chatbot.fact_model_id')
+        if fact_model_id and LlmModel.browse(int(fact_model_id)).exists():
+            res['chatbot_fact_model_id'] = int(fact_model_id)
+        else:
+            res['chatbot_fact_model_id'] = False
+
         return res
 
     def set_values(self):
@@ -189,6 +234,14 @@ class ResConfigSettings(models.TransientModel):
         param.set_param(
             'mcp_chatbot.summary_model_id',
             self.chatbot_summary_model_id.id or False,
+        )
+        param.set_param(
+            'mcp_chatbot.fact_provider_id',
+            self.chatbot_fact_provider_id.id or False,
+        )
+        param.set_param(
+            'mcp_chatbot.fact_model_id',
+            self.chatbot_fact_model_id.id or False,
         )
 
         # notify FastAPI to reload its config snapshot

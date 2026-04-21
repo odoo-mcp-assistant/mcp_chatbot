@@ -97,6 +97,32 @@
                         </setting>
                     </block>
 
+                    <!-- Fact Extraction -->
+                    <block title="Fact Extraction"
+                           name="mcp_chatbot_fact">
+                        <setting string="Fact Extraction API Key"
+                                 help="API key used exclusively for the fact-extraction LLM. Falls back to the main API key if left empty."
+                                 id="chatbot_fact_api_key_setting">
+                            <field name="chatbot_fact_api_key" style="width: 100%;"/>
+                        </setting>
+                        <setting string="Fact Extraction Base URL"
+                                 help="Base URL for the fact-extraction LLM API. Falls back to the main Base URL if left empty."
+                                 id="chatbot_fact_base_url_setting">
+                            <field name="chatbot_fact_base_url" style="width: 100%;"/>
+                        </setting>
+                        <setting string="Fact Extraction Provider"
+                                 help="Filter the fact-extraction model list to a specific provider."
+                                 id="chatbot_fact_provider_setting">
+                            <field name="chatbot_fact_provider_id"/>
+                        </setting>
+                        <setting string="Fact Extraction Model"
+                                 help="The language model used to extract durable personal facts from a closed conversation. Falls back to the main LLM model if not set."
+                                 id="chatbot_fact_model_setting">
+                            <field name="chatbot_fact_model_id"
+                                   domain="[('provider_id', '=', chatbot_fact_provider_id)]"/>
+                        </setting>
+                    </block>
+
                     <!-- MCP Server -->
                     <block title="MCP Server"
                            name="mcp_chatbot_mcp">
