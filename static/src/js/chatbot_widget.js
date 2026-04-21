@@ -270,6 +270,8 @@
             confirmYes.addEventListener('click', function () {
                 confirmOverlay.classList.add('d-none');
                 sessionGen++;
+                sendBtn.disabled = false;
+                updateSendVisibility();
                 var payload = {};
                 if (selectedRating !== null) {
                     payload.rating = selectedRating;
