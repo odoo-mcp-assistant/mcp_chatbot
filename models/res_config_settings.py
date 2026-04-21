@@ -49,8 +49,8 @@ class ResConfigSettings(models.TransientModel):
     )
 
     chatbot_llm_model_id = fields.Many2one(
-        comodel_name='mcp.llm.model',
         string="LLM Model",
+        comodel_name='mcp.llm.model',
     )
 
     chatbot_max_tool_rounds = fields.Integer(

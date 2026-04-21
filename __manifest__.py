@@ -36,6 +36,8 @@
     'assets': {
         'web.assets_frontend': [
             'mcp_chatbot/static/src/css/chatbot_widget.css',
+            'mcp_chatbot/static/src/js/chatbot_api.js',
+            'mcp_chatbot/static/src/js/chatbot_render.js',
             'mcp_chatbot/static/src/js/chatbot_widget.js',
         ],
     },
