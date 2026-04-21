@@ -158,6 +158,10 @@
 
         var isOpen = sessionStorage.getItem(API.OPEN_KEY) === '1';
 
+        // Incremented on every end-session so in-flight message callbacks
+        // from the previous session are silently dropped.
+        var sessionGen = 0;
+
         // ── Scroll-to-bottom button ───────────────────────────────
         var SCROLL_THRESHOLD_PX = 60;
         function updateScrollBtn() {
@@ -265,6 +269,7 @@
 
             confirmYes.addEventListener('click', function () {
                 confirmOverlay.classList.add('d-none');
+                sessionGen++;
                 var payload = {};
                 if (selectedRating !== null) {
                     payload.rating = selectedRating;
@@ -317,8 +322,10 @@
                 input.focus();
             }
 
+            var myGen = sessionGen;
             API.apiRequest('/mcp_chatbot/message', { message: text })
                 .then(function (result) {
+                    if (sessionGen !== myGen) { return; }
                     if (typingEl) { typingEl.remove(); typingEl = null; }
 
                     var replyText = result && result.reply
@@ -337,6 +344,7 @@
                     }
                 })
                 .catch(function (err) {
+                    if (sessionGen !== myGen) { return; }
                     console.error('[mcp_chatbot] RPC error:', err);
                     if (typingEl) { typingEl.remove(); }
                     Render.appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
