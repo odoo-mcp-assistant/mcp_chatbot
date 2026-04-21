@@ -77,6 +77,11 @@
                     <!-- Messages are injected by chatbot_widget.js -->
                 </div>
 
+                <!-- Scroll-to-bottom button -->
+                <button id="mcp_chatbot_scroll_bottom" class="mcp-chatbot-scroll-bottom d-none" aria-label="Scroll to bottom">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+
                 <!-- Input area -->
                 <div class="mcp-chatbot-input-area">
                     <div class="mcp-chatbot-input-wrapper">

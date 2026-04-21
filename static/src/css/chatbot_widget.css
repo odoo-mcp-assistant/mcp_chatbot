@@ -158,11 +158,11 @@
 }
 
 .mcp-chatbot-status.mcp-status-offline {
-    color: #9ca3af;
+    color: #ef4444;
 }
 
 .mcp-chatbot-status.mcp-status-offline::before {
-    background: #9ca3af;
+    background: #ef4444;
 }
 
 /* Action buttons on the right */
@@ -360,6 +360,30 @@
     flex-direction: column;
     gap: 8px;
     background: #ffffff;
+}
+
+/* ── Scroll-to-bottom button ──────────────────────────────────── */
+.mcp-chatbot-scroll-bottom {
+    position: absolute;
+    bottom: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    z-index: 5;
+    transition: opacity 0.2s, background 0.15s;
+}
+.mcp-chatbot-scroll-bottom:hover {
+    background: #f8f8f8;
 }
 
 /* Individual message bubbles */

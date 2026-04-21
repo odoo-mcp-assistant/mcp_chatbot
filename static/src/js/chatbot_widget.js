@@ -152,10 +152,29 @@
         var msgArea       = document.getElementById('mcp_chatbot_messages');
         var input         = document.getElementById('mcp_chatbot_input');
         var sendBtn       = document.getElementById('mcp_chatbot_send');
+        var scrollBottomBtn = document.getElementById('mcp_chatbot_scroll_bottom');
 
         if (!bubble || !chatWin || !msgArea || !input || !sendBtn) { return; }
 
         var isOpen = sessionStorage.getItem(API.OPEN_KEY) === '1';
+
+        // ── Scroll-to-bottom button ───────────────────────────────
+        var SCROLL_THRESHOLD_PX = 60;
+        function updateScrollBtn() {
+            if (!scrollBottomBtn) { return; }
+            var dist = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight;
+            if (dist > SCROLL_THRESHOLD_PX) {
+                scrollBottomBtn.classList.remove('d-none');
+            } else {
+                scrollBottomBtn.classList.add('d-none');
+            }
+        }
+        if (scrollBottomBtn) {
+            msgArea.addEventListener('scroll', updateScrollBtn);
+            scrollBottomBtn.addEventListener('click', function () {
+                msgArea.scrollTo({ top: msgArea.scrollHeight, behavior: 'smooth' });
+            });
+        }
 
         // ── Bubble tooltip hover ──────────────────────────────────
         if (bubble && bubbleTooltip) {
