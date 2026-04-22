@@ -68,7 +68,7 @@
                 console.error('[mcp_chatbot] auth/token bad response:', data);
                 return false;
             }
-            apiBaseUrl   = (data.result.api_base_url || '').replace(/\/+$/, '');
+            apiBaseUrl   = (data.result.fast_api_base_url || '').replace(/\/+$/, '');
             jwtToken     = data.result.token;
             jwtPartnerId = data.result.partner_id || null;
             return true;

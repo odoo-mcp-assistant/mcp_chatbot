@@ -44,14 +44,14 @@ class AuthController(http.Controller):
         secret = env_config.get('JWT_SECRET')
         algorithm = env_config.get('JWT_ALGORITHM', 'HS256')
         audience = env_config.get('JWT_AUDIENCE', 'mcp-chatbot-api')
-        fast_api_base_url = env_config.get('API_BASE_URL', '')
+        fast_api_base_url = env_config.get('FAST_API_BASE_URL', '')
         ttl_seconds = int(env_config.get('JWT_TTL_SECONDS', '3600'))
 
         if not secret:
             _logger.error("auth/token: JWT_SECRET is not set in .env")
             return {'error': 'JWT_SECRET not configured'}
         if not fast_api_base_url:
-            _logger.error("auth/token: API_BASE_URL is not set in .env")
+            _logger.error("auth/token: FAST_API_BASE_URL is not set in .env")
             return {'error': 'API_BASE_URL not configured'}
 
         user = request.env.user
