@@ -4,6 +4,26 @@
    collisions with any other chatbot or livechat styles.
    ================================================================ */
 
+/* ── Side-panel width (VSCode Copilot-style docked right pane) ─ */
+:root {
+    --mcp-panel-width: 400px;
+}
+
+/* When the panel is open we shrink #wrapwrap itself and apply a
+   transform so it becomes the containing block for any `position:
+   fixed` descendants — this forces Odoo's sticky/fixed header (and
+   anything else nested inside #wrapwrap) to reflow into the
+   remaining width instead of overlapping the panel.
+   The chatbot's own fixed UI is portalled out of #wrapwrap by
+   chatbot_widget.js so it stays anchored to the real viewport. */
+#wrapwrap {
+    transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+body.mcp-chatbot-open #wrapwrap {
+    width: calc(100% - var(--mcp-panel-width)) !important;
+    transform: translateZ(0);
+}
+
 /* ── Floating bubble ─────────────────────────────────────────── */
 .mcp-chatbot-bubble {
     position: fixed;
@@ -66,26 +86,35 @@
     filter: drop-shadow(1px 0 0 #e8e8e8);
 }
 
-/* ── Chat window ─────────────────────────────────────────────── */
+/* ── Chat window (docked right side panel) ───────────────────── */
 .mcp-chatbot-window {
     position: fixed;
-    bottom: 0;
+    top: 0;
     right: 0;
-    width: 400px;
-    height: 600px;
+    bottom: 0;
+    width: var(--mcp-panel-width);
+    height: 100vh;
     display: flex;
     flex-direction: column;
-    border-radius: 18px 0 0 0;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+    border-radius: 0;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08), -1px 0 4px rgba(0, 0, 0, 0.04);
     background: #ffffff;
-    border: 1px solid #e8e8e8;
-    border-bottom: none;
-    border-right: none;
+    border: none;
+    border-left: 1px solid #e8e8e8;
     z-index: 9998;
     overflow: hidden;
     font-family: inherit;
     /* needed so the confirmation overlay positions within the window */
     isolation: isolate;
+}
+
+/* Slide-in animation when the panel is revealed */
+.mcp-chatbot-window:not(.d-none) {
+    animation: mcp-panel-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes mcp-panel-slide-in {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0);    }
 }
 
 /* ── Header ───────────────────────────────────────────────────── */
@@ -95,8 +124,27 @@
     justify-content: space-between;
     padding: 6px 12px;
     background: #ffffff;
-    border-bottom: 1px solid #ebebeb;
     flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+}
+
+/* White fade under the header — text scrolling up in the message
+   list dissolves into the header's background instead of cutting
+   against a hard divider line. */
+.mcp-chatbot-header::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 12px;
+    background: linear-gradient(to bottom,
+        #ffffff 0%,
+        rgba(255, 255, 255, 0.78) 35%,
+        rgba(255, 255, 255, 0) 100%);
+    pointer-events: none;
+    z-index: 2;
 }
 
 /* Logo + name + status grouped on the left */
@@ -372,8 +420,10 @@
     height: 32px;
     border-radius: 50%;
     border: none;
-    background: #ffffff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.16), 0 1px 4px rgba(0,0,0,0.08);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -383,7 +433,7 @@
     transition: opacity 0.2s, background 0.15s;
 }
 .mcp-chatbot-scroll-bottom:hover {
-    background: #f8f8f8;
+    background: rgba(235, 237, 240, 0.72);
 }
 
 /* Individual message bubbles */
@@ -902,46 +952,41 @@
     transform: scale(0.97);
 }
 
-/* ── Mobile responsive ────────────────────────────────────────── */
-@media (max-width: 480px) {
+/* ── Mobile / narrow viewports ────────────────────────────────
+   At phone widths the side-panel layout does not fit — fall back
+   to a full-screen overlay and stop shifting the page. */
+@media (max-width: 768px) {
     .mcp-chatbot-window {
         width: 100vw;
-        height: calc(100vh - 48px);
+        height: 100vh;
+        top: 0;
         right: 0;
         bottom: 0;
-        border-radius: 14px 14px 0 0;
+        border-left: none;
+        box-shadow: none;
+    }
+    body.mcp-chatbot-open #wrapwrap {
+        width: 100% !important;
+        transform: none;
     }
 }
 
-/* ── Larger screens: scale up from the 400×600 baseline so wide
-   assistant messages (e.g. tables with many columns) fit better
-   on external monitors. ──────────────────────────────────────── */
+/* ── Larger screens: widen the docked panel so wide assistant
+   messages (e.g. tables with many columns) fit better. ───────── */
 @media (min-width: 1600px) {
-    .mcp-chatbot-window {
-        width: 460px;
-        height: 680px;
-    }
+    :root { --mcp-panel-width: 460px; }
 }
 
 @media (min-width: 1920px) {
-    .mcp-chatbot-window {
-        width: 540px;
-        height: 760px;
-    }
+    :root { --mcp-panel-width: 540px; }
 }
 
 @media (min-width: 2400px) {
-    .mcp-chatbot-window {
-        width: 640px;
-        height: 880px;
-    }
+    :root { --mcp-panel-width: 640px; }
 }
 
 @media (min-width: 3000px) {
-    .mcp-chatbot-window {
-        width: 760px;
-        height: 980px;
-    }
+    :root { --mcp-panel-width: 760px; }
 }
 
 /* Compacting bar */

@@ -156,6 +156,16 @@
 
         if (!bubble || !chatWin || !msgArea || !input || !sendBtn) { return; }
 
+        // Portal the chatbot's fixed UI out of #wrapwrap so that when
+        // the open-state class shrinks #wrapwrap (to push page content
+        // left, VSCode-Copilot-style) the panel itself stays anchored
+        // to the real viewport instead of shrinking with the page.
+        [bubble, bubbleTooltip, chatWin].forEach(function (el) {
+            if (el && el.parentNode !== document.body) {
+                document.body.appendChild(el);
+            }
+        });
+
         var isOpen = sessionStorage.getItem(API.OPEN_KEY) === '1';
 
         // Incremented on every end-session so in-flight message callbacks
@@ -205,6 +215,7 @@
         function openWindow() {
             chatWin.classList.remove('d-none');
             bubble.classList.add('d-none');
+            document.body.classList.add('mcp-chatbot-open');
             isOpen = true;
             sessionStorage.setItem(API.OPEN_KEY, '1');
             if (bubble) { bubble.classList.remove('mcp-bubble-hovered'); }
@@ -223,6 +234,7 @@
         function closeWindow() {
             chatWin.classList.add('d-none');
             bubble.classList.remove('d-none');
+            document.body.classList.remove('mcp-chatbot-open');
             isOpen = false;
             sessionStorage.setItem(API.OPEN_KEY, '0');
             // Do NOT wipe msgArea here — keeping the DOM intact means a
@@ -285,6 +297,7 @@
                         API.handleSessionGone();
                         chatWin.classList.add('d-none');
                         bubble.classList.remove('d-none');
+                        document.body.classList.remove('mcp-chatbot-open');
                         isOpen = false;
                         sessionStorage.setItem(API.OPEN_KEY, '0');
                         msgArea.innerHTML = '';
