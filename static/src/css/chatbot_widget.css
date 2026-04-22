@@ -97,10 +97,10 @@ body.mcp-chatbot-open #wrapwrap {
     display: flex;
     flex-direction: column;
     border-radius: 0;
-    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08), -1px 0 4px rgba(0, 0, 0, 0.04);
+    box-shadow: none;
     background: #ffffff;
     border: none;
-    border-left: 1px solid #e8e8e8;
+    border-left: 1px solid #d1d5db;
     z-index: 9998;
     overflow: hidden;
     font-family: inherit;
