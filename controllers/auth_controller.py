@@ -39,18 +39,18 @@ class AuthController(http.Controller):
         csrf=False,
     )
     def issue_token(self, session_token=None, **kwargs):
-        """Return `{token, api_base_url, partner_id, expires_in}`."""
+        """Return `{token, fast_api_base_url, partner_id, expires_in}`."""
         
         secret = env_config.get('JWT_SECRET')
         algorithm = env_config.get('JWT_ALGORITHM', 'HS256')
         audience = env_config.get('JWT_AUDIENCE', 'mcp-chatbot-api')
-        api_base_url = env_config.get('API_BASE_URL', '')
+        fast_api_base_url = env_config.get('API_BASE_URL', '')
         ttl_seconds = int(env_config.get('JWT_TTL_SECONDS', '3600'))
 
         if not secret:
             _logger.error("auth/token: JWT_SECRET is not set in .env")
             return {'error': 'JWT_SECRET not configured'}
-        if not api_base_url:
+        if not fast_api_base_url:
             _logger.error("auth/token: API_BASE_URL is not set in .env")
             return {'error': 'API_BASE_URL not configured'}
 
@@ -81,7 +81,7 @@ class AuthController(http.Controller):
 
         return {
             'token': token,
-            'api_base_url': api_base_url,
+            'fast_api_base_url': fast_api_base_url,
             'partner_id': partner_id,
             'expires_in': ttl_seconds,
         }
