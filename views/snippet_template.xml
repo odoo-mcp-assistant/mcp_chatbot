@@ -39,6 +39,9 @@
                         </div>
                     </div>
                     <div class="mcp-chatbot-header-actions">
+                        <button class="mcp-chatbot-expand" title="Expand">
+                            <i class="fa fa-expand"/>
+                        </button>
                         <button class="mcp-chatbot-close" title="Minimize">
                             <i class="fa fa-minus"/>
                         </button>

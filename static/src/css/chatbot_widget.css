@@ -222,6 +222,7 @@ body.mcp-chatbot-open #wrapwrap {
 }
 
 .mcp-chatbot-close,
+.mcp-chatbot-expand,
 .mcp-chatbot-end-session {
     background: transparent;
     border: none;
@@ -242,9 +243,32 @@ body.mcp-chatbot-open #wrapwrap {
     color: #111111;
 }
 
+.mcp-chatbot-expand:hover {
+    background: #f3f4f6;
+    color: #111111;
+}
+
 .mcp-chatbot-end-session:hover {
     background: #fff1f2;
     color: #dc2626;
+}
+
+/* ── Expanded state (50% viewport width) ─────────────────────── */
+:root {
+    --mcp-panel-width-expanded: 50vw;
+}
+
+body.mcp-chatbot-expanded .mcp-chatbot-window {
+    width: var(--mcp-panel-width-expanded);
+}
+
+body.mcp-chatbot-expanded #wrapwrap {
+    width: calc(100% - var(--mcp-panel-width-expanded)) !important;
+}
+
+/* Swap icon to compress when expanded */
+body.mcp-chatbot-expanded .mcp-chatbot-expand i {
+    /* fa-compress icon via content override */
 }
 
 /* ── End-session confirmation overlay ────────────────────────── */
@@ -1129,4 +1153,20 @@ body.mcp-chatbot-open #wrapwrap {
 }
 .mcp-assistant-text .mcp-md-link:hover {
     color: #3a6e8a;
+}
+
+/* ── Hide expand button on tablets, iPads, and phones (≤1024px) ─
+   Expanding to 50% makes no sense at narrow widths where the
+   widget already goes full-screen. Also cancel any active
+   expanded state so the layout is not broken. */
+@media (max-width: 1024px) {
+    .mcp-chatbot-expand {
+        display: none !important;
+    }
+    body.mcp-chatbot-expanded .mcp-chatbot-window {
+        width: var(--mcp-panel-width);
+    }
+    body.mcp-chatbot-expanded #wrapwrap {
+        width: calc(100% - var(--mcp-panel-width)) !important;
+    }
 }

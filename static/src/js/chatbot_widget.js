@@ -145,6 +145,7 @@
         var bubbleTooltip = document.getElementById('mcp_chatbot_bubble_tooltip');
         var chatWin       = document.getElementById('mcp_chatbot_window');
         var closeBtn      = chatWin && chatWin.querySelector('.mcp-chatbot-close');
+        var expandBtn     = chatWin && chatWin.querySelector('.mcp-chatbot-expand');
         var endSessionBtn = chatWin && chatWin.querySelector('.mcp-chatbot-end-session');
         var confirmOverlay = chatWin && chatWin.querySelector('.mcp-chatbot-confirm-overlay');
         var confirmYes    = chatWin && chatWin.querySelector('.mcp-chatbot-confirm-yes');
@@ -235,7 +236,13 @@
             chatWin.classList.add('d-none');
             bubble.classList.remove('d-none');
             document.body.classList.remove('mcp-chatbot-open');
+            document.body.classList.remove('mcp-chatbot-expanded');
             isOpen = false;
+            isExpanded = false;
+            if (expandBtn) {
+                expandBtn.title = 'Expand';
+                expandBtn.querySelector('i').className = 'fa fa-expand';
+            }
             sessionStorage.setItem(API.OPEN_KEY, '0');
             // Do NOT wipe msgArea here — keeping the DOM intact means a
             // mid-stream reply continues painting into the hidden bubble
@@ -248,6 +255,23 @@
 
         if (closeBtn) {
             closeBtn.addEventListener('click', closeWindow);
+        }
+
+        // ── Expand / collapse to 50% width ───────────────────────
+        var isExpanded = false;
+        if (expandBtn) {
+            expandBtn.addEventListener('click', function () {
+                isExpanded = !isExpanded;
+                if (isExpanded) {
+                    document.body.classList.add('mcp-chatbot-expanded');
+                    expandBtn.title = 'Collapse';
+                    expandBtn.querySelector('i').className = 'fa fa-compress';
+                } else {
+                    document.body.classList.remove('mcp-chatbot-expanded');
+                    expandBtn.title = 'Expand';
+                    expandBtn.querySelector('i').className = 'fa fa-expand';
+                }
+            });
         }
 
         // ── End session (with confirmation + rating) ─────────────
@@ -298,7 +322,13 @@
                         chatWin.classList.add('d-none');
                         bubble.classList.remove('d-none');
                         document.body.classList.remove('mcp-chatbot-open');
+                        document.body.classList.remove('mcp-chatbot-expanded');
                         isOpen = false;
+                        isExpanded = false;
+                        if (expandBtn) {
+                            expandBtn.title = 'Expand';
+                            expandBtn.querySelector('i').className = 'fa fa-expand';
+                        }
                         sessionStorage.setItem(API.OPEN_KEY, '0');
                         msgArea.innerHTML = '';
                     })
