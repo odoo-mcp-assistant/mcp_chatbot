@@ -106,6 +106,8 @@ body.mcp-chatbot-open #wrapwrap {
     font-family: inherit;
     /* needed so the confirmation overlay positions within the window */
     isolation: isolate;
+    /* smooth width transition for expand/collapse */
+    transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Slide-in animation when the panel is revealed */
@@ -269,6 +271,17 @@ body.mcp-chatbot-expanded #wrapwrap {
 /* Swap icon to compress when expanded */
 body.mcp-chatbot-expanded .mcp-chatbot-expand i {
     /* fa-compress icon via content override */
+}
+
+/* In expanded mode, cap the hero input + suggestion pills so they
+   don't stretch uncomfortably wide across the 50vw panel. */
+body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input-area,
+body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggestions {
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* ── End-session confirmation overlay ────────────────────────── */
@@ -437,7 +450,7 @@ body.mcp-chatbot-expanded .mcp-chatbot-expand i {
 /* ── Scroll-to-bottom button ──────────────────────────────────── */
 .mcp-chatbot-scroll-bottom {
     position: absolute;
-    bottom: 72px;
+    bottom: 108px;
     left: 50%;
     transform: translateX(-50%);
     width: 32px;
@@ -664,14 +677,14 @@ body.mcp-chatbot-expanded .mcp-chatbot-expand i {
 
 .mcp-chatbot-input-wrapper {
     display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
     flex: 1;
     background: #ffffff;
     border: 1px solid #e0e4e8;
     border-radius: 14px;
-    padding: 6px 6px 6px 12px;
+    padding: 8px 10px 6px 12px;
     box-shadow: 0 2px 3px -1px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05);
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.15s;
     position: relative;
@@ -695,7 +708,7 @@ body.mcp-chatbot-expanded .mcp-chatbot-expand i {
     font-family: inherit;
     box-sizing: border-box;
     height: 24px;                /* stable 1-line baseline — prevents initial layout jump */
-    max-height: 44px;            /* ~ 2 lines at 14px / 1.4 */
+    max-height: 88px;            /* ~ 4 lines at 14px / 1.4 */
     overflow-y: auto;
 }
 
@@ -717,21 +730,13 @@ body.mcp-chatbot-expanded .mcp-chatbot-expand i {
     flex-shrink: 0;
 }
 
-/* Empty/hero state: keep the roomier 2-row composer
-   (textarea on top, dedicated action row underneath). */
-.mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input-wrapper {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
-    padding: 8px 10px 6px 12px;
-}
 .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input-actions {
     margin-top: 4px;
 }
 
 .mcp-chatbot-send {
-    width: 30px;
-    height: 30px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     border: none;
     background: #4d8eb3;
@@ -749,8 +754,8 @@ body.mcp-chatbot-expanded .mcp-chatbot-expand i {
 
 /* Silent (unclickable) state — button stays visible but looks muted */
 .mcp-chatbot-send.mcp-send-hidden {
-    background: #e5e5e5;
-    color: #a8a8a8;
+    background: #c8dfe8;
+    color: #ffffff;
     cursor: not-allowed;
     pointer-events: none;
     box-shadow: none;
