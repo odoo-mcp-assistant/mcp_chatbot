@@ -245,10 +245,10 @@ class ResConfigSettings(models.TransientModel):
         )
 
         # notify FastAPI to reload its config snapshot
-        api_base_url = env_config.get('API_BASE_URL', '')
-        if api_base_url:
+        fast_api_base_url = env_config.get('FAST_API_BASE_URL', '')
+        if fast_api_base_url:
             try:
-                requests.post(f"{api_base_url}/reload_config", timeout=5)
-                _logger.info("set_values: FastAPI config reloaded at %s", api_base_url)
+                requests.post(f"{fast_api_base_url}/reload_config", timeout=5)
+                _logger.info("set_values: FastAPI config reloaded at %s", fast_api_base_url)
             except Exception as exc:
                 _logger.warning("set_values: failed to reload FastAPI config: %s", exc)

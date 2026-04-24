@@ -766,7 +766,7 @@ body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggesti
 }
 
 .mcp-chatbot-send:disabled {
-    background: #cccccc;
+    background: #c8dfe8;
     color: #ffffff;
     cursor: not-allowed;
 }

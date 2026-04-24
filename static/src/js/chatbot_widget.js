@@ -225,6 +225,7 @@
             if (msgArea.children.length === 0) {
                 loadHistoryFromBackend(msgArea, function (hasSession) {
                     setEndSessionVisible(hasSession);
+                    updateScrollBtn();
                     input.focus();
                 });
             } else {
@@ -331,6 +332,7 @@
                         }
                         sessionStorage.setItem(API.OPEN_KEY, '0');
                         msgArea.innerHTML = '';
+                        updateScrollBtn();
                     })
                     .catch(function (err) {
                         console.error('[mcp_chatbot] Failed to close session:', err);
