@@ -130,7 +130,9 @@ body.mcp-chatbot-open #wrapwrap {
     position: relative;
     z-index: 2;
 }
-
+.mcp-chatbot-msg.assistant.streaming .mcp-assistant-text {
+    white-space: pre-wrap;
+}
 /* White fade under the header — text scrolling up in the message
    list dissolves into the header's background instead of cutting
    against a hard divider line. */
@@ -180,7 +182,36 @@ body.mcp-chatbot-open #wrapwrap {
     text-overflow: ellipsis;
     line-height: 1.3;
 }
+/* ── Streaming cursor ─────────────────────────────────────────── */
 
+.mcp-stream-cursor {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: #10a37f;          /* ChatGPT green — change to your brand color */
+    border-radius: 50%;
+    margin-left: 2px;
+    margin-bottom: 2px;
+    vertical-align: middle;
+    animation: mcp-cursor-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mcp-cursor-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* Optional: softer variant for dark themes */
+.mcp-chatbot-window.dark .mcp-stream-cursor {
+    background: #19c59f;
+}
+
+/* ── Ensure cursor doesn't break layout ───────────────────────── */
+
+.mcp-assistant-text .mcp-stream-cursor {
+    pointer-events: none;
+    user-select: none;
+}
 .mcp-chatbot-status {
     font-size: 11px;
     font-weight: 500;

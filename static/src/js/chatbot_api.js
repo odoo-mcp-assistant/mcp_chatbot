@@ -1,13 +1,5 @@
 /**
  * chatbot_api.js — network / auth layer
- *
- * Handles JWT minting, all HTTP requests to FastAPI, and anonymous
- * session token management.  Exposes window.McpChatbotAPI so the
- * widget file can call apiRequest / handleSessionGone without knowing
- * the auth internals.
- *
- * Load order: this file must come before chatbot_render.js and
- * chatbot_widget.js in web.assets_frontend.
  */
 
 (function () {
@@ -45,9 +37,6 @@
         sessionStorage.removeItem(OPEN_KEY);
     }
 
-    // Synchronous call to Odoo to mint a JWT for this caller.
-    // Called on page load and again whenever FastAPI returns 401 or
-    // an anonymous session has been rotated.
     function fetchJwtSync() {
         var xhr = new XMLHttpRequest();
         xhr.open('POST', '/mcp_chatbot/auth/token', false);
@@ -78,8 +67,8 @@
         }
     }
 
-    // All chat traffic goes through here.  Adds Authorization header,
-    // refreshes the JWT once on 401 and retries.
+    // ── Classic JSON request ───────────────────────────────────────────────
+
     function apiRequest(path, body) {
         function doFetch() {
             return fetch(apiBaseUrl + path, {
@@ -104,9 +93,82 @@
         });
     }
 
-    // Called when the backend reports the session no longer exists.
-    // For anonymous users we rotate the session_token and re-mint the
-    // JWT so the next message starts a fresh backend session.
+    // ── Streaming request (SSE) ───────────────────────────────────────────
+
+    function apiRequestStream(path, body, callbacks) {
+        callbacks = callbacks || {};
+        var onChunk = callbacks.onChunk || null;
+        var onDone  = callbacks.onDone  || null;
+        var onError = callbacks.onError || null;
+        var onMeta  = callbacks.onMeta  || null;
+
+        function doFetch() {
+            return fetch(apiBaseUrl + path, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + jwtToken,
+                },
+                body: JSON.stringify(body || {}),
+            });
+        }
+
+        function parseStream(res) {
+            var reader = res.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+
+            function read() {
+                return reader.read().then(function (result) {
+                    if (result.done) {
+                        if (onDone) { onDone(); }
+                        return;
+                    }
+
+                    buffer += decoder.decode(result.value, { stream: true });
+                    var lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    lines.forEach(function (line) {
+                        line = line.trim();
+                        if (!line.startsWith('data: ')) { return; }
+                        var jsonStr = line.slice(6);
+                        if (jsonStr === '[DONE]') { return; }
+                        try {
+                            var data = JSON.parse(jsonStr);
+                            if (data.type === 'meta' && onMeta) {
+                                onMeta(data);
+                            } else if (data.type === 'chunk' && onChunk) {
+                                onChunk(data.text);
+                            } else if (data.type === 'done' && onDone) {
+                                onDone(data);
+                            } else if (data.type === 'error' && onError) {
+                                onError(new Error(data.message || 'Stream error'));
+                            }
+                        } catch (e) {
+                            console.error('[mcp_chatbot] SSE parse error:', e);
+                        }
+                    });
+
+                    return read();
+                });
+            }
+
+            return read();
+        }
+
+        doFetch().then(function (res) {
+            if (res.status === 401) {
+                if (!fetchJwtSync()) { throw new Error('JWT refresh failed'); }
+                return doFetch().then(parseStream);
+            }
+            if (!res.ok) { throw new Error('HTTP ' + res.status); }
+            return parseStream(res);
+        }).catch(function (err) {
+            if (onError) { onError(err); }
+        });
+    }
+
     function handleSessionGone() {
         if (!jwtPartnerId) {
             clearAnonSession();
@@ -114,12 +176,12 @@
         }
     }
 
-    // Bootstrap — block until we have a JWT + apiBaseUrl.
     fetchJwtSync();
 
     window.McpChatbotAPI = {
         OPEN_KEY:           OPEN_KEY,
         apiRequest:         apiRequest,
+        apiRequestStream:   apiRequestStream,
         handleSessionGone:  handleSessionGone,
         getPartnerId:       function () { return jwtPartnerId; },
     };

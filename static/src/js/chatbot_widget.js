@@ -9,23 +9,6 @@
  *   1. chatbot_api.js
  *   2. chatbot_render.js
  *   3. chatbot_widget.js  ← this file
- *
- * Design decisions:
- *
- * 1. The session token is stored in sessionStorage (not localStorage).
- *    sessionStorage is cleared automatically when the browser tab is
- *    closed or when the user logs out (Odoo invalidates the session).
- *    This prevents cross-user contamination entirely.
- *
- * 2. For logged-in users, no token is stored. The session is identified
- *    by the partner_id provided by the backend.
- *
- * 3. Chat history is fetched from the backend on every widget open,
- *    not stored in the browser. The browser only stores the token
- *    for anonymous users.
- *
- * 4. If the backend session is closed (cron) or not found, the token
- *    is wiped and a fresh one is generated automatically for anonymous users.
  */
 
 (function () {
@@ -114,8 +97,7 @@
         }
     }
 
-    // Fetch bot metadata once on page load — populates header title, tooltip,
-    // status badge, and the hero greeting identity.
+    // Fetch bot metadata once on page load
     API.apiRequest('/mcp_chatbot/info', {})
         .then(function (result) {
             if (!result) { return; }
@@ -125,13 +107,12 @@
                 isAuthenticated: !!result.is_authenticated,
                 firstName:       result.first_name || '',
             });
-            // Re-render the hero if it's already on screen with placeholder identity.
             var msgArea = document.getElementById('mcp_chatbot_messages');
             if (msgArea && msgArea.querySelector('#mcp_chatbot_hero')) {
                 Render.renderHero(msgArea);
             }
         })
-        .catch(function () {});  // silent — fallbacks stay as "AI Assistant" / "Online"
+        .catch(function () {});
 
     // ──────────────────────────────────────────────────────────────
     // Widget initialisation
@@ -157,10 +138,7 @@
 
         if (!bubble || !chatWin || !msgArea || !input || !sendBtn) { return; }
 
-        // Portal the chatbot's fixed UI out of #wrapwrap so that when
-        // the open-state class shrinks #wrapwrap (to push page content
-        // left, VSCode-Copilot-style) the panel itself stays anchored
-        // to the real viewport instead of shrinking with the page.
+        // Portal the chatbot's fixed UI out of #wrapwrap
         [bubble, bubbleTooltip, chatWin].forEach(function (el) {
             if (el && el.parentNode !== document.body) {
                 document.body.appendChild(el);
@@ -168,9 +146,6 @@
         });
 
         var isOpen = sessionStorage.getItem(API.OPEN_KEY) === '1';
-
-        // Incremented on every end-session so in-flight message callbacks
-        // from the previous session are silently dropped.
         var sessionGen = 0;
 
         // ── Scroll-to-bottom button ───────────────────────────────
@@ -220,8 +195,6 @@
             isOpen = true;
             sessionStorage.setItem(API.OPEN_KEY, '1');
             if (bubble) { bubble.classList.remove('mcp-bubble-hovered'); }
-            // Only refetch history when the message area is empty
-            // (first open of the tab, or after an explicit end-session).
             if (msgArea.children.length === 0) {
                 loadHistoryFromBackend(msgArea, function (hasSession) {
                     setEndSessionVisible(hasSession);
@@ -245,9 +218,6 @@
                 expandBtn.querySelector('i').className = 'fa fa-expand';
             }
             sessionStorage.setItem(API.OPEN_KEY, '0');
-            // Do NOT wipe msgArea here — keeping the DOM intact means a
-            // mid-stream reply continues painting into the hidden bubble
-            // and the user sees the full conversation when they reopen.
         }
 
         bubble.addEventListener('click', function () {
@@ -344,17 +314,16 @@
             openWindow();
         }
 
-        // ── Send message ──────────────────────────────────────────
+        // ── Send message (streaming) ──────────────────────────────
+                // ── Send message (streaming) ──────────────────────────────
+                // ── Send message (true streaming) ─────────────────────────
         function sendMessage() {
-            // Re-entrancy guard — send button stays disabled from the moment
-            // a request fires until the typewriter finishes painting the reply.
             if (sendBtn.disabled) { return; }
 
             var text = input.value.trim();
             if (!text) { return; }
 
             Render.removeHero(msgArea);
-
             Render.appendMessage(msgArea, 'user', text);
             input.value = '';
             autoResizeInput();
@@ -362,6 +331,12 @@
             updateSendVisibility();
 
             var typingEl = Render.showTyping(msgArea);
+            var myGen = sessionGen;
+
+            var streamBubble = null;
+            var streamTextSpan = null;
+            var accumulatedText = '';
+            var didSummarize = false;
 
             function unlockSend() {
                 sendBtn.disabled = false;
@@ -369,36 +344,88 @@
                 input.focus();
             }
 
-            var myGen = sessionGen;
-            API.apiRequest('/mcp_chatbot/message', { message: text })
-                .then(function (result) {
-                    if (sessionGen !== myGen) { return; }
-                    if (typingEl) { typingEl.remove(); typingEl = null; }
+            function onMeta(data) {
+                if (sessionGen !== myGen) { return; }
+                if (data && data.summarized) {
+                    didSummarize = true;
+                    Render.showCompactingBar(msgArea);
+                }
+            }
 
-                    var replyText = result && result.reply
-                        ? result.reply
+                function onChunk(chunkText) {
+                if (sessionGen !== myGen) { return; }
+                if (typingEl) { typingEl.remove(); typingEl = null; }
+
+                if (!streamBubble) {
+                    var created = Render.createStreamingBubble(msgArea);
+                    streamBubble = created.bubble;
+                    streamTextSpan = created.textSpan;
+                }
+
+                accumulatedText += chunkText;
+                Render.updateStreamingBubble(streamTextSpan, accumulatedText);
+
+                var distanceFromBottom =
+                    msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight;
+                if (distanceFromBottom < 50) {
+                    msgArea.scrollTop = msgArea.scrollHeight;
+                }
+            }
+
+            function onDone(data) {
+                if (sessionGen !== myGen) { return; }
+                if (typingEl) { typingEl.remove(); typingEl = null; }
+
+                if (streamBubble) {
+                    Render.finalizeStreamingBubble(streamBubble, streamTextSpan, accumulatedText);
+                } else {
+                    // No chunks arrived — show fallback
+                    var fallback = (data && data.reply)
+                        ? data.reply
                         : 'Sorry, I could not get a reply.';
+                    Render.appendMessage(msgArea, 'assistant', fallback);
+                }
 
-                    if (result && result.summarized) {
-                        Render.showCompactingBar(msgArea);
-                        setTimeout(function () {
-                            Render.streamMessageIntoBubble(msgArea, replyText, unlockSend);
+                setEndSessionVisible(true);
+                unlockSend();
+            }
+
+            function onError(err) {
+                if (sessionGen !== myGen) { return; }
+                console.error('[mcp_chatbot] Stream error:', err);
+                if (typingEl) { typingEl.remove(); }
+                if (streamBubble) { streamBubble.remove(); streamBubble = null; }
+
+                // Fallback to non-streaming JSON endpoint
+                API.apiRequest('/mcp_chatbot/message', { message: text })
+                    .then(function (result) {
+                        if (sessionGen !== myGen) { return; }
+                        var replyText = result && result.reply
+                            ? result.reply
+                            : 'Sorry, I could not get a reply.';
+                        if (result && result.summarized) {
+                            Render.showCompactingBar(msgArea);
+                        }
+                        Render.streamMessageIntoBubble(msgArea, replyText, function () {
                             setEndSessionVisible(true);
-                        }, 5000);
-                    } else {
-                        Render.streamMessageIntoBubble(msgArea, replyText, unlockSend);
-                        setEndSessionVisible(true);
-                    }
-                })
-                .catch(function (err) {
-                    if (sessionGen !== myGen) { return; }
-                    console.error('[mcp_chatbot] RPC error:', err);
-                    if (typingEl) { typingEl.remove(); }
-                    Render.appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
-                    unlockSend();
-                });
-        }
+                            unlockSend();
+                        });
+                    })
+                    .catch(function (err2) {
+                        if (sessionGen !== myGen) { return; }
+                        console.error('[mcp_chatbot] Fallback error:', err2);
+                        Render.appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
+                        unlockSend();
+                    });
+            }
 
+            API.apiRequestStream('/mcp_chatbot/message/stream', { message: text }, {
+                onMeta: onMeta,
+                onChunk: onChunk,
+                onDone: onDone,
+                onError: onError,
+            });
+        }
         sendBtn.addEventListener('click', sendMessage);
 
         // ── Suggestion chips ──────────────────────────────────────
@@ -438,10 +465,8 @@
         function autoResizeInput() {
             input.style.height = 'auto';
             var sh = input.scrollHeight;
-            // Bail if hidden (scrollHeight is 0) — otherwise we'd pin
-            // height: 0px and collapse the textarea once it becomes visible.
             if (!sh) { return; }
-            var max = 88; // keep in sync with .mcp-chatbot-input max-height
+            var max = 88;
             input.style.height = Math.min(sh, max) + 'px';
         }
         autoResizeInput();

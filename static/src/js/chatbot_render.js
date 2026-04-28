@@ -14,47 +14,61 @@
     'use strict';
 
     // ──────────────────────────────────────────────────────────────
-    // Markdown renderer
-    // Converts the LLM's markdown output to safe HTML.
+    // Markdown renderer — FAST path for streaming
     // ──────────────────────────────────────────────────────────────
 
-    function renderMarkdown(text) {
+    var _codeStash = [];
+    var _codeMap = {};
+
+    function _stashCode(html) {
+        var key = '\x00CODE' + _codeStash.length + '\x00';
+        _codeStash.push(html);
+        _codeMap[key] = html;
+        return key;
+    }
+
+    function _restoreCodes(text) {
+        return text.replace(/\x00CODE\d+\x00/g, function (ph) {
+            return _codeMap[ph] || ph;
+        });
+    }
+
+    function _resetStash() {
+        _codeStash = [];
+        _codeMap = {};
+    }
+
+    function renderMarkdown(text, opts) {
+        opts = opts || {};
+        var isStreaming = !!opts.streaming;
+
         var escaped = String(text || '').replace(/\r\n?/g, '\n');
 
-        // 1. Escape raw HTML to prevent XSS
+        // 1. Escape raw HTML
         escaped = escaped
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
-        // 2. Stash code blocks so later rules can't mangle their contents.
-        var codeStash = [];
-        function stash(html) {
-            var i = codeStash.length;
-            codeStash.push(html);
-            return '\x00CODE' + i + '\x00';
+        // 2. Stash code blocks
+        if (!isStreaming) {
+            _resetStash();
         }
 
         escaped = escaped.replace(/```[\w]*\n?([\s\S]*?)```/g, function (_, code) {
-            return stash('<pre class="mcp-md-pre"><code>' + code.trim() + '</code></pre>');
+            return _stashCode('<pre class="mcp-md-pre"><code>' + code.trim() + '</code></pre>');
         });
         escaped = escaped.replace(/`([^`\n]+)`/g, function (_, code) {
-            return stash('<code class="mcp-md-code">' + code + '</code>');
+            return _stashCode('<code class="mcp-md-code">' + code + '</code>');
         });
 
-        // 3. Bold+italic (***text***)
+        // 3. Inline formatting
         escaped = escaped.replace(/\*\*\*([^\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-
-        // 4. Bold (**text**)
         escaped = escaped.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
-
-        // 5. Italic (*text*)
         escaped = escaped.replace(/(^|[^*\w])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
-
-        // 6. Strikethrough (~~text~~)
         escaped = escaped.replace(/~~([^\n]+?)~~/g, '<del>$1</del>');
 
-        // 7. Headings (# … ######)
+        // 4. Headings
         escaped = escaped.replace(/^[ \t]{0,3}###### (.+?)\s*$/gm, '<h6 class="mcp-md-h">$1</h6>');
         escaped = escaped.replace(/^[ \t]{0,3}##### (.+?)\s*$/gm,  '<h5 class="mcp-md-h">$1</h5>');
         escaped = escaped.replace(/^[ \t]{0,3}#### (.+?)\s*$/gm,   '<h4 class="mcp-md-h">$1</h4>');
@@ -62,18 +76,16 @@
         escaped = escaped.replace(/^[ \t]{0,3}## (.+?)\s*$/gm,     '<h3 class="mcp-md-h">$1</h3>');
         escaped = escaped.replace(/^[ \t]{0,3}# (.+?)\s*$/gm,      '<h2 class="mcp-md-h">$1</h2>');
 
-        // 8. Horizontal rule
+        // 5. Horizontal rule
         escaped = escaped.replace(/^[ \t]*(?:[-*_][ \t]*){3,}[ \t]*$/gm, '<hr class="mcp-md-hr">');
 
-        // 9. Unordered lists (- item or * item)
+        // 6. Lists
         escaped = escaped.replace(/((?:^[ \t]*[-*+][ \t]+.+\n?)+)/gm, function (block) {
             var items = block.trim().split(/\n/).map(function (line) {
                 return '<li>' + line.replace(/^[ \t]*[-*+][ \t]+/, '') + '</li>';
             });
             return '<ul class="mcp-md-ul">' + items.join('') + '</ul>';
         });
-
-        // 10. Ordered lists (1. item)
         escaped = escaped.replace(/((?:^[ \t]*\d+\.[ \t]+.+\n?)+)/gm, function (block) {
             var items = block.trim().split(/\n/).map(function (line) {
                 return '<li>' + line.replace(/^[ \t]*\d+\.[ \t]+/, '') + '</li>';
@@ -81,7 +93,7 @@
             return '<ol class="mcp-md-ol">' + items.join('') + '</ol>';
         });
 
-        // 11. Blockquote
+        // 7. Blockquote
         escaped = escaped.replace(/((?:^&gt;[ \t]?.*\n?)+)/gm, function (block) {
             var inner = block.trim().split(/\n/).map(function (line) {
                 return line.replace(/^&gt;[ \t]?/, '');
@@ -89,7 +101,7 @@
             return '<blockquote class="mcp-md-blockquote">' + inner + '</blockquote>';
         });
 
-        // 12. GFM tables
+        // 8. GFM tables
         escaped = escaped.replace(
             /^[ \t]*\|(.+)\|[ \t]*\n[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*\n((?:[ \t]*\|.*\|[ \t]*\n?)+)/gm,
             function (_, headerLine, bodyBlock) {
@@ -113,19 +125,17 @@
             }
         );
 
-        // 13. Links [text](url)
+        // 9. Links
         escaped = escaped.replace(
             /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
             '<a class="mcp-md-link" href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
         );
-
-        // 14. Autolinks — bare URLs not already inside an <a>
         escaped = escaped.replace(
             /(^|[^"'>=])\b(https?:\/\/[^\s<)]+)/g,
             '$1<a class="mcp-md-link" href="$2" target="_blank" rel="noopener noreferrer">$2</a>'
         );
 
-        // 15. Paragraphs
+        // 10. Paragraphs
         var blocks = escaped.split(/\n{2,}/);
         escaped = blocks.map(function (block) {
             var trimmed = block.trim();
@@ -134,10 +144,8 @@
             return '<p class="mcp-md-p">' + trimmed.replace(/\n/g, '<br>') + '</p>';
         }).join('');
 
-        // 16. Restore stashed code blocks
-        escaped = escaped.replace(/\x00CODE(\d+)\x00/g, function (_, i) {
-            return codeStash[parseInt(i, 10)];
-        });
+        // 11. Restore stashed code blocks
+        escaped = _restoreCodes(escaped);
 
         return escaped;
     }
@@ -182,11 +190,51 @@
         container.scrollTop = container.scrollHeight;
     }
 
-    // Typewriter-style rendering for assistant replies.
-    //
-    // Strategy: render the full markdown → HTML once upfront, then
-    // stream the rendered HTML word-by-word using a hidden clone so
-    // we never paint a half-open HTML tag into the visible DOM.
+    // ── Streaming bubble with LIVE markdown + trailing cursor ─────
+
+    function createStreamingBubble(container) {
+        var bubble = document.createElement('div');
+        bubble.className = 'mcp-chatbot-msg assistant streaming';
+
+        var inner = document.createElement('div');
+        inner.className = 'mcp-assistant-inner';
+
+        var avatarWrap = document.createElement('span');
+        avatarWrap.className = 'mcp-assistant-avatar-wrap';
+        var avatar = document.createElement('img');
+        avatar.className = 'mcp-assistant-avatar';
+        avatar.src = getAvatarSrc();
+        avatar.alt = '';
+        avatarWrap.appendChild(avatar);
+
+        var textSpan = document.createElement('span');
+        textSpan.className = 'mcp-assistant-text';
+        textSpan.innerHTML = '';
+
+        inner.appendChild(avatarWrap);
+        inner.appendChild(textSpan);
+        bubble.appendChild(inner);
+
+        container.appendChild(bubble);
+        container.scrollTop = container.scrollHeight;
+
+        return { bubble: bubble, textSpan: textSpan };
+    }
+
+    function updateStreamingBubble(textSpan, text) {
+        // Render markdown + append the streaming cursor
+        var html = renderMarkdown(text, { streaming: true });
+        textSpan.innerHTML = html + '<span class="mcp-stream-cursor"></span>';
+    }
+
+    function finalizeStreamingBubble(bubble, textSpan, text) {
+        _resetStash();
+        textSpan.innerHTML = renderMarkdown(text, { streaming: false });
+        bubble.classList.remove('streaming');
+    }
+
+    // ── Fallback typewriter (non-streaming JSON path) ─────────────
+
     function streamMessageIntoBubble(container, text, onDone) {
         var DELAY_MS = 18;
         var STICK_THRESHOLD_PX = 50;
@@ -250,6 +298,8 @@
         }
         tick();
     }
+
+    // ── Typing indicator ──────────────────────────────────────────
 
     function showTyping(container) {
         var indicator = document.createElement('div');
@@ -398,6 +448,9 @@
         renderMarkdown:          renderMarkdown,
         appendMessage:           appendMessage,
         streamMessageIntoBubble: streamMessageIntoBubble,
+        createStreamingBubble:   createStreamingBubble,
+        updateStreamingBubble:   updateStreamingBubble,
+        finalizeStreamingBubble: finalizeStreamingBubble,
         showTyping:              showTyping,
         showCompactingBar:       showCompactingBar,
         setEmptyState:           setEmptyState,
