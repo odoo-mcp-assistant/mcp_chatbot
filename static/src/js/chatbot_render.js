@@ -221,13 +221,56 @@
         return { bubble: bubble, textSpan: textSpan };
     }
 
+    // rAF-throttle streaming updates so we re-render at most once per frame.
+    // Each token chunk replaces innerHTML, which is expensive — batching keeps
+    // the bubble visually stable instead of flickering on every chunk.
     function updateStreamingBubble(textSpan, text) {
-        // Render markdown + append the streaming cursor
+        textSpan.__streamPendingText = text;
+        if (textSpan.__streamRaf) { return; }
+        textSpan.__streamRaf = window.requestAnimationFrame(function () {
+            textSpan.__streamRaf = 0;
+            var pending = textSpan.__streamPendingText;
+            if (pending == null) { return; }
+            _renderStreamingFrame(textSpan, pending);
+            textSpan.__streamPendingText = null;
+        });
+    }
+
+    var VOID_TAGS = { BR: 1, HR: 1, IMG: 1, INPUT: 1, WBR: 1 };
+
+    function _renderStreamingFrame(textSpan, text) {
         var html = renderMarkdown(text, { streaming: true });
-        textSpan.innerHTML = html + '<span class="mcp-stream-cursor"></span>';
+        if (textSpan.__streamLastHtml === html) { return; }
+        textSpan.__streamLastHtml = html;
+        textSpan.innerHTML = html;
+
+        var indicator = document.createElement('span');
+        indicator.className = 'mcp-stream-indicator';
+
+        // Walk to the deepest last element, but never descend into void
+        // elements (br/hr/img) since they can't host children — the bubble
+        // would disappear or land on a new line.
+        var target = textSpan;
+        while (target.lastElementChild && !VOID_TAGS[target.lastElementChild.tagName]) {
+            target = target.lastElementChild;
+        }
+        // If the deepest leaf's last child is a void tag (e.g. trailing <br>),
+        // insert the bubble BEFORE it so it stays on the previous line.
+        var voidTail = target.lastElementChild;
+        if (voidTail && VOID_TAGS[voidTail.tagName]) {
+            target.insertBefore(indicator, voidTail);
+        } else {
+            target.appendChild(indicator);
+        }
     }
 
     function finalizeStreamingBubble(bubble, textSpan, text) {
+        if (textSpan.__streamRaf) {
+            window.cancelAnimationFrame(textSpan.__streamRaf);
+            textSpan.__streamRaf = 0;
+        }
+        textSpan.__streamPendingText = null;
+        textSpan.__streamLastHtml = null;
         _resetStash();
         textSpan.innerHTML = renderMarkdown(text, { streaming: false });
         bubble.classList.remove('streaming');
@@ -318,7 +361,11 @@
 
         var textSpan = document.createElement('span');
         textSpan.className = 'mcp-assistant-text';
-        textSpan.textContent = 'Thinking...';
+        textSpan.innerHTML = (
+            '<span class="mcp-chatbot-dots">' +
+                '<span></span><span></span><span></span>' +
+            '</span>'
+        );
 
         inner.appendChild(avatarWrap);
         inner.appendChild(textSpan);
