@@ -244,11 +244,18 @@ class ResConfigSettings(models.TransientModel):
             self.chatbot_fact_model_id.id or False,
         )
 
-        # notify FastAPI to reload its config snapshot
+        # notify FastAPI to reload its config snapshot — AFTER commit so
+        # it re-reads the committed (new) values via odoorpc, and so a
+        # slow/down FastAPI never blocks the user's save.
         fast_api_base_url = env_config.get('FAST_API_BASE_URL', '')
         if fast_api_base_url:
-            try:
-                requests.post(f"{fast_api_base_url}/reload_config", timeout=5)
-                _logger.info("set_values: FastAPI config reloaded at %s", fast_api_base_url)
-            except Exception as exc:
-                _logger.warning("set_values: failed to reload FastAPI config: %s", exc)
+            url = f"{fast_api_base_url}/reload_config"
+
+            def _notify_fastapi():
+                try:
+                    requests.post(url, timeout=5)
+                    _logger.info("set_values: FastAPI config reloaded at %s", fast_api_base_url)
+                except Exception as exc:
+                    _logger.warning("set_values: failed to reload FastAPI config: %s", exc)
+
+            self.env.cr.postcommit.add(_notify_fastapi)
