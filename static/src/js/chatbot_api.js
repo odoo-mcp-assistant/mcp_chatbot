@@ -80,16 +80,19 @@
 
     // All chat traffic goes through here.  Adds Authorization header,
     // refreshes the JWT once on 401 and retries.
-    function apiRequest(path, body) {
+    // method defaults to 'POST'; pass 'GET' for read-only endpoints (no body sent).
+    function apiRequest(path, body, method) {
+        method = method || 'POST';
         function doFetch() {
-            return fetch(apiBaseUrl + path, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + jwtToken,
-                },
-                body: JSON.stringify(body || {}),
-            });
+            var opts = {
+                method: method,
+                headers: { 'Authorization': 'Bearer ' + jwtToken },
+            };
+            if (method !== 'GET' && method !== 'HEAD') {
+                opts.headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify(body || {});
+            }
+            return fetch(apiBaseUrl + path, opts);
         }
         return doFetch().then(function (res) {
             if (res.status === 401) {

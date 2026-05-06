@@ -96,9 +96,9 @@ User facts are stored in the Odoo model `mcp.chatbot.user.fact` (one row per fac
 | Route | Purpose |
 |---|---|
 | `POST /mcp_chatbot/get_uid` | Returns current user's partner ID (or `"0"` for anonymous) |
-| `POST /mcp_chatbot/info` | Returns chatbot metadata + current user identity for the hero greeting |
+| `GET /mcp_chatbot/info` | Returns chatbot metadata + current user identity for the hero greeting |
 | `POST /mcp_chatbot/message` | Main chat endpoint |
-| `POST /mcp_chatbot/history` | Returns full session history for page reload restoration |
+| `GET /mcp_chatbot/history` | Returns full session history for page reload restoration |
 | `POST /mcp_chatbot/close` | Closes the session |
 
 ### Session identity rules

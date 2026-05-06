@@ -122,9 +122,9 @@ Browser widget (chatbot_widget.js)
 | Route | Method | Purpose |
 |---|---|---|
 | `/mcp_chatbot/get_uid` | POST | Returns current user's partner ID (`"0"` for anonymous) |
-| `/mcp_chatbot/info` | POST | Returns chatbot metadata + current user identity for the hero greeting |
+| `/mcp_chatbot/info` | GET | Returns chatbot metadata + current user identity for the hero greeting |
 | `/mcp_chatbot/message` | POST | Main chat endpoint |
-| `/mcp_chatbot/history` | POST | Returns full session history for page-reload restoration |
+| `/mcp_chatbot/history` | GET | Returns full session history for page-reload restoration |
 | `/mcp_chatbot/close` | POST | Closes the session |
 
 ### Session identity

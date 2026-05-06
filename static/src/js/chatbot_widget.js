@@ -39,7 +39,7 @@
     // ──────────────────────────────────────────────────────────────
 
     function loadHistoryFromBackend(container, callback) {
-        API.apiRequest('/mcp_chatbot/history', {})
+        API.apiRequest('/mcp_chatbot/history', null, 'GET')
             .then(function (result) {
                 if (!result || result.status === 'closed' || result.status === 'not_found') {
                     API.handleSessionGone();
@@ -116,7 +116,7 @@
 
     // Fetch bot metadata once on page load — populates header title, tooltip,
     // status badge, and the hero greeting identity.
-    API.apiRequest('/mcp_chatbot/info', {})
+    API.apiRequest('/mcp_chatbot/info', null, 'GET')
         .then(function (result) {
             if (!result) { return; }
             if (result.bot_name) { updateHeaderName(result.bot_name); }
