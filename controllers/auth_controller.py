@@ -56,12 +56,12 @@ class AuthController(http.Controller):
 
         user = request.env.user
         partner_id = None
-        anonymous = True
+        #anonymous = True
         claim_session_token = None
 
         if user and not user._is_public():
             partner_id = user.partner_id.id
-            anonymous = False
+            #anonymous = False
         else:
             if not session_token:
                 return {'error': 'session_token is required for anonymous users'}
@@ -72,7 +72,7 @@ class AuthController(http.Controller):
             'sub': str(partner_id) if partner_id else f'anon:{claim_session_token}',
             'partner_id': partner_id,
             'session_token': claim_session_token,
-            'anonymous': anonymous,
+            #'anonymous': anonymous,
             'iat': now,
             'exp': now + ttl_seconds,
             'aud': audience,
