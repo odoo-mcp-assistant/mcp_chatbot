@@ -14,6 +14,8 @@ class ChatbotRating(models.Model):
     session_id = fields.Many2one(
         'mcp.chatbot.session',
         string="Session",
+        required=True,
+        ondelete='cascade',
         domain="[('rating_ids', '=', False)]"
     )
     rating_text = fields.Selection([
