@@ -45,13 +45,3 @@ class ChatbotMessage(models.Model):
         string='Content',
         required=True,
     )
-
-    # ------------------------------------------------------------------ #
-    # Convenience display fields                                           #
-    # ------------------------------------------------------------------ #
-
-    partner_id = fields.Many2one(
-        related='session_id.partner_id',
-        string='Visitor',
-        store=True,
-    )

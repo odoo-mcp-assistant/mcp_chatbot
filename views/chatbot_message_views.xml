@@ -11,7 +11,6 @@
             <list string="Chatbot Messages">
                 <field name="create_date" string="Time"/>
                 <field name="session_id"/>
-                <field name="partner_id"/>
                 <field name="role"/>
                 <field name="content"/>
             </list>
@@ -30,7 +29,6 @@
                     <group>
                         <group string="Context">
                             <field name="session_id"/>
-                            <field name="partner_id"/>
                             <field name="role"/>
                             <field name="create_date" string="Sent at" readonly="1"/>
                         </group>
@@ -52,14 +50,12 @@
         <field name="arch" type="xml">
             <search string="Search Messages">
                 <field name="content"/>
-                <field name="partner_id"/>
                 <field name="session_id"/>
                 <filter string="User messages"      name="user"      domain="[('role','=','user')]"/>
                 <filter string="Assistant messages" name="assistant" domain="[('role','=','assistant')]"/>
                 <group expand="0" string="Group By">
                     <filter string="Session" name="group_session" context="{'group_by': 'session_id'}"/>
                     <filter string="Role"    name="group_role"    context="{'group_by': 'role'}"/>
-                    <filter string="Visitor" name="group_partner" context="{'group_by': 'partner_id'}"/>
                 </group>
             </search>
         </field>
