@@ -42,42 +42,12 @@
     </record>
 
     <!-- ============================================================ -->
-    <!-- Message search view                                           -->
-    <!-- ============================================================ -->
-    <record id="view_mcp_chatbot_message_search" model="ir.ui.view">
-        <field name="name">mcp.chatbot.message.search</field>
-        <field name="model">mcp.chatbot.message</field>
-        <field name="arch" type="xml">
-            <search string="Search Messages">
-                <field name="content"/>
-                <field name="session_id"/>
-                <filter string="User messages"      name="user"      domain="[('role','=','user')]"/>
-                <filter string="Assistant messages" name="assistant" domain="[('role','=','assistant')]"/>
-                <group expand="0" string="Group By">
-                    <filter string="Session" name="group_session" context="{'group_by': 'session_id'}"/>
-                    <filter string="Role"    name="group_role"    context="{'group_by': 'role'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
-
-    <!-- ============================================================ -->
     <!-- Action                                                        -->
     <!-- ============================================================ -->
     <record id="action_mcp_chatbot_messages" model="ir.actions.act_window">
         <field name="name">Chatbot Messages</field>
         <field name="res_model">mcp.chatbot.message</field>
         <field name="view_mode">list,form</field>
-        <field name="search_view_id" ref="view_mcp_chatbot_message_search"/>
     </record>
-
-    <!-- ============================================================ -->
-    <!-- Menu item (under the root menu defined in session views)      -->
-    <!-- ============================================================ -->
-    <menuitem id="menu_mcp_chatbot_messages"
-              name="Messages"
-              parent="mcp_chatbot.menu_mcp_chatbot_root"
-              action="action_mcp_chatbot_messages"
-              sequence="20"/>
 
 </odoo>
