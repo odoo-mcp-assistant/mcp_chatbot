@@ -35,7 +35,7 @@
                              alt="Bot"/>
                         <div class="mcp-chatbot-header-info">
                             <span id="mcp_chatbot_title" class="mcp-chatbot-title">AI Assistant</span>
-                            <span class="mcp-chatbot-status">Online</span>
+                            <span class="mcp-chatbot-status">Offline</span>
                         </div>
                     </div>
                     <div class="mcp-chatbot-header-actions">
