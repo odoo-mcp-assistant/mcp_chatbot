@@ -258,6 +258,19 @@
         // true it returns to that live chat, otherwise it starts a fresh one.
         var hasCurrentSession = false;
 
+        // While the user browses a past conversation, the live chat's DOM
+        // (its messages + any in-progress "Thinking…" indicator) is detached
+        // into this fragment rather than destroyed, then re-attached on return
+        // — so a reply that was mid-flight is never lost.
+        var liveFragment = null;
+
+        // Whether a /message reply is currently in flight, and the live
+        // "Thinking…" indicator node it will replace. Tracked at widget scope
+        // (not inside sendMessage) so the reply can be delivered to the live
+        // view even after a detour through the history view.
+        var livePending = false;
+        var liveTypingEl = null;
+
         // ── Scroll-to-bottom button ───────────────────────────────
         // Floating arrow shown when the user has scrolled up away from
         // the bottom of the message list. Lets them jump back to the
@@ -556,34 +569,120 @@
             }
         }
 
+        // Detach the entire live message area into liveFragment so it can be
+        // restored byte-for-byte later (including a running thinking indicator).
+        function captureLiveView() {
+            liveFragment = document.createDocumentFragment();
+            while (msgArea.firstChild) {
+                liveFragment.appendChild(msgArea.firstChild);
+            }
+        }
+
+        // Deliver a completed /message reply. In the live view it streams in and
+        // unlocks the composer; while browsing history it's added (static) to the
+        // preserved fragment so it's already there when the user returns.
+        function applyLiveReply(result) {
+            livePending = false;
+            var replyText = (result && result.reply)
+                ? result.reply
+                : 'Sorry, I could not get a reply.';
+
+            // Replace the thinking indicator wherever it currently lives.
+            if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
+
+            if (viewingPast) {
+                // Off-screen: drop the reply into the detached live fragment.
+                if (liveFragment) {
+                    Render.appendMessage(liveFragment, 'assistant', replyText);
+                }
+                return;
+            }
+
+            function unlockSend() {
+                sendBtn.disabled = false;
+                updateSendVisibility();
+                input.focus();
+            }
+
+            if (result && result.summarized) {
+                // Server compacted history this round — show the 5s bar first.
+                Render.showCompactingBar(msgArea);
+                setTimeout(function () {
+                    Render.streamMessageIntoBubble(msgArea, replyText, unlockSend);
+                    setEndSessionVisible(true);
+                }, 5000);
+            } else {
+                Render.streamMessageIntoBubble(msgArea, replyText, unlockSend);
+                setEndSessionVisible(true);
+            }
+        }
+
+        // Same idea for a failed request: surface the error in whichever view
+        // is live, and unlock the composer when we're actually showing it.
+        function failLiveReply() {
+            livePending = false;
+            if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
+            var container = viewingPast ? liveFragment : msgArea;
+            if (container) {
+                Render.appendMessage(container, 'assistant', 'An error occurred. Please try again.');
+            }
+            if (!viewingPast) {
+                sendBtn.disabled = false;
+                updateSendVisibility();
+                input.focus();
+            }
+        }
+
         function enterPastView() {
             viewingPast = true;
             chatWin.classList.add('mcp-viewing-past');
+            // A past conversation always has messages — make sure the empty-state
+            // (hero) layout isn't left on from the live view we just detached.
+            Render.setEmptyState(false);
             updateBackButton();
             if (readonlyBar) { readonlyBar.classList.remove('d-none'); }
             setEndSessionVisible(false);   // can't end a session you're only viewing
         }
 
-        // Leave read-only mode and return to the live session, reloading its
-        // history from the backend so the composer reflects the real state.
+        // Leave read-only mode and restore the preserved live view. We re-attach
+        // the exact DOM we detached on entry (messages + any in-progress
+        // thinking indicator, or a reply that landed while we were away) instead
+        // of reloading from the backend — so nothing in-flight is lost.
         function exitPastView() {
             viewingPast = false;
             viewedSessionId = null;
             chatWin.classList.remove('mcp-viewing-past');
             if (readonlyBar) { readonlyBar.classList.add('d-none'); }
+
             msgArea.innerHTML = '';
-            loadHistoryFromBackend(msgArea, function (hasSession) {
-                setEndSessionVisible(hasSession);
-                updateScrollBtn();
-            });
+            if (liveFragment) {
+                msgArea.appendChild(liveFragment);   // moves children back in
+                liveFragment = null;
+            }
+
+            // If a reply is still in flight, keep the composer locked and let
+            // the pending request unlock it when it lands; otherwise it's usable.
+            sendBtn.disabled = livePending;
+            updateSendVisibility();
+
+            // No real messages in the restored live view → show the fresh-chat
+            // hero. renderHero() also clears any stale restored hero node and
+            // re-applies the empty-state layout; otherwise force it off.
+            if (!msgArea.querySelector('.mcp-chatbot-msg')) {
+                Render.renderHero(msgArea);
+            } else {
+                Render.setEmptyState(false);
+            }
+            // End-session only makes sense once a real exchange exists.
+            setEndSessionVisible(!!msgArea.querySelector('.mcp-chatbot-msg'));
+            updateScrollBtn();
+            msgArea.scrollTop = msgArea.scrollHeight;
         }
 
-        // Fetch and render one past conversation, read-only.
+        // Fetch and render one past conversation, read-only. The in-flight live
+        // reply (if any) is NOT dropped — the live view is detached intact and
+        // the reply keeps streaming/queuing against it in the background.
         function loadPastConversation(sessionId) {
-            // Drop any in-flight live reply so it can't paint into the
-            // read-only view (mirrors the end-session generation guard).
-            sessionGen++;
-
             API.apiRequest('/mcp_chatbot/conversations/' + sessionId, null, 'GET')
                 .then(function (result) {
                     if (!result || result.status !== 'ok') {
@@ -592,7 +691,10 @@
                         return;
                     }
                     hideSidebar();
-                    Render.removeHero(msgArea);
+                    // Preserve the live view the first time we leave it. On
+                    // subsequent past↔past switches it's already saved, so we
+                    // just discard the previously shown past conversation.
+                    if (!viewingPast) { captureLiveView(); }
                     msgArea.innerHTML = '';
                     (result.messages || []).forEach(function (msg) {
                         Render.appendMessage(msgArea, msg.role, msg.content);
@@ -688,6 +790,10 @@
                 // Bump generation so any reply still streaming from a
                 // previous /message call is dropped on arrival.
                 sessionGen++;
+                // The dropped reply will never reach applyLiveReply, so clear
+                // the pending-state it would otherwise have reset.
+                livePending = false;
+                liveTypingEl = null;
                 sendBtn.disabled = false;
                 updateSendVisibility();
                 // Build the payload — both fields are optional.
@@ -759,53 +865,26 @@
             sendBtn.disabled = true;
             updateSendVisibility();
 
-            // "Thinking..." bubble — replaced by the real reply later.
-            var typingEl = Render.showTyping(msgArea);
-
-            // Re-enables the send button once the reply animation finishes.
-            // Passed as a callback to streamMessageIntoBubble so the button
-            // stays disabled for the entire reply animation, not just the
-            // HTTP round-trip.
-            function unlockSend() {
-                sendBtn.disabled = false;
-                updateSendVisibility();
-                input.focus();
-            }
+            // "Thinking..." indicator — tracked at widget scope (liveTypingEl)
+            // so it survives a detour into the history view and is replaced by
+            // the reply wherever the live view happens to be at that point.
+            liveTypingEl = Render.showTyping(msgArea);
+            livePending = true;
 
             // Snapshot the session generation. If end-session is clicked
-            // mid-request, sessionGen will be bumped and our callbacks
-            // will detect the mismatch and silently return.
+            // mid-request, sessionGen is bumped and the callbacks below bail.
+            // Browsing history does NOT bump it — the reply stays valid and is
+            // delivered to the (detached) live view via applyLiveReply.
             var myGen = sessionGen;
             API.apiRequest('/mcp_chatbot/message', { message: text })
                 .then(function (result) {
-                    if (sessionGen !== myGen) { return; }   // stale-reply guard
-                    if (typingEl) { typingEl.remove(); typingEl = null; }
-
-                    var replyText = result && result.reply
-                        ? result.reply
-                        : 'Sorry, I could not get a reply.';
-
-                    if (result && result.summarized) {
-                        // Server compacted the conversation history this
-                        // round — show a 5-second progress bar before the
-                        // reply, so the small latency feels intentional.
-                        Render.showCompactingBar(msgArea);
-                        setTimeout(function () {
-                            Render.streamMessageIntoBubble(msgArea, replyText, unlockSend);
-                            setEndSessionVisible(true);
-                        }, 5000);
-                    } else {
-                        // Normal path — stream the reply immediately.
-                        Render.streamMessageIntoBubble(msgArea, replyText, unlockSend);
-                        setEndSessionVisible(true);
-                    }
+                    if (sessionGen !== myGen) { return; }   // session ended → drop
+                    applyLiveReply(result);
                 })
                 .catch(function (err) {
-                    if (sessionGen !== myGen) { return; }   // stale-error guard
+                    if (sessionGen !== myGen) { return; }   // session ended → drop
                     console.error('[mcp_chatbot] RPC error:', err);
-                    if (typingEl) { typingEl.remove(); }
-                    Render.appendMessage(msgArea, 'assistant', 'An error occurred. Please try again.');
-                    unlockSend();
+                    failLiveReply();
                 });
         }
 
