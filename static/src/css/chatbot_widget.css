@@ -255,6 +255,28 @@ body.mcp-chatbot-open #wrapwrap {
     color: #dc2626;
 }
 
+/* History toggle — same affordance as the other header icons, but pinned
+   on the left right after the bot name/status (lives inside .identity). */
+.mcp-chatbot-history {
+    background: transparent;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 5px 7px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.mcp-chatbot-history:hover {
+    background: #f3f4f6;
+    color: #111111;
+}
+
 /* ── Expanded state (50% viewport width) ─────────────────────── */
 :root {
     --mcp-panel-width-expanded: 50vw;
@@ -266,11 +288,6 @@ body.mcp-chatbot-expanded .mcp-chatbot-window {
 
 body.mcp-chatbot-expanded #wrapwrap {
     width: calc(100% - var(--mcp-panel-width-expanded)) !important;
-}
-
-/* Swap icon to compress when expanded */
-body.mcp-chatbot-expanded .mcp-chatbot-expand i {
-    /* fa-compress icon via content override */
 }
 
 /* In expanded mode, cap the hero input + suggestion pills so they
@@ -1174,4 +1191,210 @@ body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggesti
     body.mcp-chatbot-expanded #wrapwrap {
         width: calc(100% - var(--mcp-panel-width)) !important;
     }
+}
+
+/* ================================================================
+   Conversations sidebar (logged-in, read-only history)
+   ================================================================ */
+
+/* Dim backdrop behind the drawer — clicking it closes the sidebar.
+   Sits above the message list but is created/destroyed via .d-none. */
+.mcp-chatbot-sidebar-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.35);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 11;
+}
+
+/* The drawer itself — slides in from the left over the whole window,
+   carrying its own header so the close affordance is always visible. */
+.mcp-chatbot-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 82%;
+    max-width: 300px;
+    background: #ffffff;
+    border-right: 1px solid #e5e7eb;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.12);
+    z-index: 12;
+    display: flex;
+    flex-direction: column;
+    animation: mcp-sidebar-slide-in 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes mcp-sidebar-slide-in {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0);     }
+}
+
+.mcp-chatbot-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    font-weight: 700;
+    font-size: 13px;
+    color: #111111;
+    border-bottom: 1px solid #f0f2f5;
+    flex-shrink: 0;
+}
+
+.mcp-chatbot-sidebar-close {
+    background: transparent;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+.mcp-chatbot-sidebar-close:hover {
+    background: #f3f4f6;
+    color: #111111;
+}
+
+/* Flat, list-style rows — borderless, the way ChatGPT / Claude / DeepSeek
+   render history. Separation comes from whitespace and subtle hover/selected
+   fills rather than boxes around every item. */
+.mcp-chatbot-conversations {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+/* Time-bucketed groups (Today / Yesterday / Previous 7 days / …). */
+.mcp-conversation-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.mcp-conversation-section + .mcp-conversation-section {
+    margin-top: 14px;
+}
+/* Muted caption above each group — no divider line, sentence case. */
+.mcp-conversation-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #8a8f98;
+    padding: 6px 10px 4px;
+}
+
+/* One conversation = one flat row: title on top, a compact muted meta line
+   (date · message count) beneath it. */
+.mcp-conversation-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 10px;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    transition: background 0.12s ease;
+}
+.mcp-conversation-item:hover {
+    background: #f0f1f3;
+}
+/* The row you're currently viewing keeps a persistent fill — kept light
+   (faint blue tint) so the gray meta line stays readable on top of it. */
+.mcp-conversation-item.is-current {
+    background: #f0f5f9;
+}
+.mcp-conversation-item.is-current:hover {
+    background: #e9f0f5;
+}
+
+.mcp-conversation-title {
+    min-width: 0;
+    font-size: 13.5px;
+    color: #2b2f33;
+    font-weight: 500;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Secondary line — date/time and total messages, small and unobtrusive. */
+.mcp-conversation-meta {
+    min-width: 0;
+    font-size: 11px;
+    color: #9aa0a6;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Empty / loading / error placeholder inside the list. */
+.mcp-conversations-empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+/* ── Read-only affordance (while browsing a past conversation) ──
+   A subtle glassy pill floating at the bottom-centre of the panel — same
+   visual language as the scroll-to-bottom button — instead of a heavy
+   full-width bar. The composer is hidden in this mode, so the pill sits
+   roughly where the composer used to be. */
+.mcp-chatbot-readonly-bar {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    z-index: 6;
+    display: flex;
+}
+.mcp-chatbot-back-current {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #2c5f82;
+    border: 1px solid #d6e3ea;
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.06);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+}
+/* Hover enhancement is just the border picking up the brand blue. */
+.mcp-chatbot-back-current:hover {
+    border-color: #4d8eb3;
+}
+.mcp-chatbot-back-current:active { transform: translateY(1px) scale(0.98); }
+
+/* Keep the last message clear of the floating pill. */
+.mcp-chatbot-window.mcp-viewing-past .mcp-chatbot-messages {
+    padding-bottom: 64px;
+}
+
+/* While viewing a past conversation, the composer + its surrounding
+   chrome are gone — only the read-only footer remains. */
+.mcp-chatbot-window.mcp-viewing-past .mcp-chatbot-input-area,
+.mcp-chatbot-window.mcp-viewing-past .mcp-chatbot-suggestions,
+.mcp-chatbot-window.mcp-viewing-past .mcp-chatbot-disclaimer {
+    display: none !important;
 }

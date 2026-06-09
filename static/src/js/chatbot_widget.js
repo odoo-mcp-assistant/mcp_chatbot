@@ -206,6 +206,15 @@
         var sendBtn       = document.getElementById('mcp_chatbot_send');
         var scrollBottomBtn = document.getElementById('mcp_chatbot_scroll_bottom');
 
+        // Conversations sidebar (logged-in, read-only history) nodes.
+        var historyBtn      = chatWin && chatWin.querySelector('.mcp-chatbot-history');
+        var sidebar         = document.getElementById('mcp_chatbot_sidebar');
+        var sidebarClose    = chatWin && chatWin.querySelector('.mcp-chatbot-sidebar-close');
+        var sidebarBackdrop = document.getElementById('mcp_chatbot_sidebar_backdrop');
+        var convoList       = document.getElementById('mcp_chatbot_conversations');
+        var readonlyBar     = document.getElementById('mcp_chatbot_readonly_bar');
+        var backCurrentBtn  = chatWin && chatWin.querySelector('.mcp-chatbot-back-current');
+
         // The widget template might not be on this page (the chatbot
         // is only injected via snippet_template.xml). Bail silently
         // if the core nodes are missing.
@@ -231,6 +240,23 @@
         // call captures the current value into `myGen`; if `sessionGen`
         // has moved on by the time the response lands, the callback bails.
         var sessionGen = 0;
+
+        // True while the user is browsing a past conversation from the
+        // sidebar. In this mode the composer is hidden (CSS, via the
+        // .mcp-viewing-past class on the window) and the read-only footer
+        // is shown instead — see enterPastView / exitPastView below.
+        var viewingPast = false;
+
+        // Id of the past session currently open in the read-only view, or
+        // null when we're on the live session. Drives which sidebar row is
+        // highlighted: the past one you're reading, or — on the live session —
+        // the open/current row.
+        var viewedSessionId = null;
+
+        // Whether the user has a live (open) session. Refreshed every time the
+        // sidebar list is rendered. Decides the read-only footer button: when
+        // true it returns to that live chat, otherwise it starts a fresh one.
+        var hasCurrentSession = false;
 
         // ── Scroll-to-bottom button ───────────────────────────────
         // Floating arrow shown when the user has scrolled up away from
@@ -328,6 +354,274 @@
         // Top-right "X" button just closes; never calls any endpoint.
         if (closeBtn) {
             closeBtn.addEventListener('click', closeWindow);
+        }
+
+        // ── Conversations sidebar (logged-in users, read-only) ───
+        // The history button is hidden in the template by default; we
+        // only reveal it once we know the caller is authenticated. The
+        // partner_id comes from the signed JWT (see chatbot_api.js), so
+        // anonymous visitors never see the button at all.
+        var isAuthenticated = !!API.getPartnerId();
+        if (isAuthenticated && historyBtn) {
+            historyBtn.classList.remove('d-none');
+        }
+
+        // Map a session's creation time to a ChatGPT-style age bucket
+        // (Today / Yesterday / Previous 7 days / Previous 30 days / Older).
+        // Compares calendar days, not 24h windows, so "Yesterday" is correct
+        // regardless of the time of day.
+        function bucketLabel(iso) {
+            if (!iso) { return 'Older'; }
+            var d = new Date(iso);
+            if (isNaN(d.getTime())) { return 'Older'; }
+            var now = new Date();
+            var startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            var startThat  = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            var diffDays = Math.round((startToday - startThat) / 86400000);
+            if (diffDays <= 0)  { return 'Today'; }
+            if (diffDays === 1) { return 'Yesterday'; }
+            if (diffDays <= 7)  { return 'Previous 7 days'; }
+            if (diffDays <= 30) { return 'Previous 30 days'; }
+            return 'Older';
+        }
+
+        // Compact "Mon D, HH:MM" label for the per-row meta line.
+        function formatConvoDate(iso) {
+            if (!iso) { return ''; }
+            var d = new Date(iso);
+            if (isNaN(d.getTime())) { return ''; }
+            var date = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            var time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return date + ', ' + time;
+        }
+
+        function showSidebar() {
+            if (sidebar)         { sidebar.classList.remove('d-none'); }
+            if (sidebarBackdrop) { sidebarBackdrop.classList.remove('d-none'); }
+        }
+        function hideSidebar() {
+            if (sidebar)         { sidebar.classList.add('d-none'); }
+            if (sidebarBackdrop) { sidebarBackdrop.classList.add('d-none'); }
+        }
+
+        // Build one clickable conversation row — title only, single line, flat
+        // (no card chrome), like the major AI assistants. `isActive` highlights
+        // the row the user is currently looking at (follows the open past
+        // conversation, not always the live session).
+        function buildConversationItem(convo, isActive) {
+            var isCurrent = convo.state === 'open';
+
+            var item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'mcp-conversation-item' + (isActive ? ' is-current' : '');
+
+            var title = document.createElement('span');
+            title.className = 'mcp-conversation-title';
+            title.textContent = convo.title || 'New conversation';
+            title.title = convo.title || '';   // native tooltip shows the full text
+            item.appendChild(title);
+
+            // Secondary line: date/time · total messages.
+            var meta = document.createElement('span');
+            meta.className = 'mcp-conversation-meta';
+            var count = convo.message_count || 0;
+            var parts = [];
+            var when = formatConvoDate(convo.created_at);
+            if (when) { parts.push(when); }
+            parts.push(count + (count === 1 ? ' message' : ' messages'));
+            meta.textContent = parts.join('  ·  ');
+            item.appendChild(meta);
+
+            item.addEventListener('click', function () {
+                selectConversation(convo.id, isCurrent);
+            });
+            return item;
+        }
+
+        // Build a labelled section (header + its rows).
+        function buildConversationSection(label, convos, activeId) {
+            var section = document.createElement('div');
+            section.className = 'mcp-conversation-section';
+
+            var heading = document.createElement('div');
+            heading.className = 'mcp-conversation-section-title';
+            heading.textContent = label;
+            section.appendChild(heading);
+
+            convos.forEach(function (convo) {
+                section.appendChild(buildConversationItem(convo, convo.id === activeId));
+            });
+            return section;
+        }
+
+        // Order the past-conversation time buckets are rendered in.
+        var TIME_BUCKET_ORDER = [
+            'Today', 'Yesterday', 'Previous 7 days', 'Previous 30 days', 'Older',
+        ];
+
+        // Render the sidebar. The live (open) session, if any, sits in its own
+        // "Current conversation" group at the top; the past conversations are
+        // then split into time buckets (Today / Yesterday / Previous 7 days /
+        // …), newest first — the layout the major AI assistants use. The
+        // highlighted row follows whatever the user is actually viewing.
+        function renderConversations(list) {
+            if (!convoList) { return; }
+            convoList.innerHTML = '';
+
+            if (!list || list.length === 0) {
+                var empty = document.createElement('div');
+                empty.className = 'mcp-conversations-empty';
+                empty.textContent = 'No conversations yet.';
+                convoList.appendChild(empty);
+                return;
+            }
+
+            // FastAPI already sorts newest-first; split into live vs past.
+            var open   = list.filter(function (c) { return c.state === 'open'; });
+            var closed = list.filter(function (c) { return c.state !== 'open'; });
+
+            // Remember whether a live session exists (drives the footer button).
+            hasCurrentSession = open.length > 0;
+
+            // Which row to highlight: the past one being read, else the live one.
+            var activeId = viewingPast
+                ? viewedSessionId
+                : (open.length ? open[0].id : null);
+
+            if (open.length) {
+                convoList.appendChild(
+                    buildConversationSection('Current conversation', open, activeId)
+                );
+            }
+
+            // Bucket the past conversations by age. Insertion order within each
+            // bucket is preserved, so rows stay newest-first.
+            var buckets = {};
+            closed.forEach(function (c) {
+                var label = bucketLabel(c.created_at);
+                (buckets[label] = buckets[label] || []).push(c);
+            });
+            TIME_BUCKET_ORDER.forEach(function (label) {
+                if (buckets[label] && buckets[label].length) {
+                    convoList.appendChild(
+                        buildConversationSection(label, buckets[label], activeId)
+                    );
+                }
+            });
+        }
+
+        // Open the drawer and (re)load the list from FastAPI every time, so
+        // a conversation closed/rated since the last open is reflected.
+        function openSidebar() {
+            if (!convoList) { return; }
+            showSidebar();
+            convoList.innerHTML =
+                '<div class="mcp-conversations-empty">Loading…</div>';
+            API.apiRequest('/mcp_chatbot/conversations', null, 'GET')
+                .then(function (result) {
+                    renderConversations(result && result.conversations);
+                })
+                .catch(function (err) {
+                    console.error('[mcp_chatbot] Failed to load conversations:', err);
+                    convoList.innerHTML =
+                        '<div class="mcp-conversations-empty">Couldn’t load your conversations.</div>';
+                });
+        }
+
+        if (historyBtn) {
+            historyBtn.addEventListener('click', openSidebar);
+        }
+        if (sidebarClose) {
+            sidebarClose.addEventListener('click', hideSidebar);
+        }
+        if (sidebarBackdrop) {
+            sidebarBackdrop.addEventListener('click', hideSidebar);
+        }
+
+        // Switch the window into read-only "viewing a past conversation" mode:
+        // the .mcp-viewing-past class hides the composer/suggestions/disclaimer
+        // (CSS) and we surface the read-only footer in their place.
+        // Point the footer button at the right action/label: return to the
+        // live chat when one exists, otherwise offer to start a fresh one.
+        function updateBackButton() {
+            if (!backCurrentBtn) { return; }
+            var icon  = backCurrentBtn.querySelector('i');
+            var label = backCurrentBtn.querySelector('.mcp-back-label');
+            if (hasCurrentSession) {
+                if (icon)  { icon.className = 'fa fa-arrow-left'; }
+                if (label) { label.textContent = 'Back to current chat'; }
+            } else {
+                if (icon)  { icon.className = 'fa fa-plus'; }
+                if (label) { label.textContent = 'Start a new chat'; }
+            }
+        }
+
+        function enterPastView() {
+            viewingPast = true;
+            chatWin.classList.add('mcp-viewing-past');
+            updateBackButton();
+            if (readonlyBar) { readonlyBar.classList.remove('d-none'); }
+            setEndSessionVisible(false);   // can't end a session you're only viewing
+        }
+
+        // Leave read-only mode and return to the live session, reloading its
+        // history from the backend so the composer reflects the real state.
+        function exitPastView() {
+            viewingPast = false;
+            viewedSessionId = null;
+            chatWin.classList.remove('mcp-viewing-past');
+            if (readonlyBar) { readonlyBar.classList.add('d-none'); }
+            msgArea.innerHTML = '';
+            loadHistoryFromBackend(msgArea, function (hasSession) {
+                setEndSessionVisible(hasSession);
+                updateScrollBtn();
+            });
+        }
+
+        // Fetch and render one past conversation, read-only.
+        function loadPastConversation(sessionId) {
+            // Drop any in-flight live reply so it can't paint into the
+            // read-only view (mirrors the end-session generation guard).
+            sessionGen++;
+
+            API.apiRequest('/mcp_chatbot/conversations/' + sessionId, null, 'GET')
+                .then(function (result) {
+                    if (!result || result.status !== 'ok') {
+                        // Session vanished (e.g. deleted in Odoo) — refresh the list.
+                        openSidebar();
+                        return;
+                    }
+                    hideSidebar();
+                    Render.removeHero(msgArea);
+                    msgArea.innerHTML = '';
+                    (result.messages || []).forEach(function (msg) {
+                        Render.appendMessage(msgArea, msg.role, msg.content);
+                    });
+                    viewedSessionId = sessionId;
+                    enterPastView();
+                    // Start at the top so reading flows from the beginning.
+                    msgArea.scrollTop = 0;
+                    updateScrollBtn();
+                })
+                .catch(function (err) {
+                    console.error('[mcp_chatbot] Failed to load conversation:', err);
+                    hideSidebar();
+                });
+        }
+
+        // Row click dispatcher: the live session returns you to the chat,
+        // any other row opens read-only.
+        function selectConversation(sessionId, isCurrent) {
+            if (isCurrent) {
+                if (viewingPast) { exitPastView(); }
+                hideSidebar();
+                return;
+            }
+            loadPastConversation(sessionId);
+        }
+
+        if (backCurrentBtn) {
+            backCurrentBtn.addEventListener('click', exitPastView);
         }
 
         // ── Expand / collapse to 50% width ───────────────────────

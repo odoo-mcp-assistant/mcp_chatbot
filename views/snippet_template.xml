@@ -37,6 +37,13 @@
                             <span id="mcp_chatbot_title" class="mcp-chatbot-title">AI Assistant</span>
                             <span class="mcp-chatbot-status">Offline</span>
                         </div>
+                        <!-- Conversation history toggle — sits on the left, right
+                             after the bot name/status. Revealed by JS only for
+                             logged-in users (anonymous visitors have no browsable
+                             history). -->
+                        <button class="mcp-chatbot-history d-none" title="Your conversations">
+                            <i class="fa fa-bars"/>
+                        </button>
                     </div>
                     <div class="mcp-chatbot-header-actions">
                         <button class="mcp-chatbot-expand" title="Expand">
@@ -75,6 +82,22 @@
                     </div>
                 </div>
 
+                <!-- ── Conversations sidebar (logged-in users, read-only) ──
+                     Slides in over the chat from the left when the history
+                     button is clicked. Items are injected by chatbot_widget.js. -->
+                <div id="mcp_chatbot_sidebar_backdrop" class="mcp-chatbot-sidebar-backdrop d-none"/>
+                <aside id="mcp_chatbot_sidebar" class="mcp-chatbot-sidebar d-none">
+                    <div class="mcp-chatbot-sidebar-header">
+                        <span>Your conversations</span>
+                        <button class="mcp-chatbot-sidebar-close" title="Close">
+                            <i class="fa fa-times"/>
+                        </button>
+                    </div>
+                    <div id="mcp_chatbot_conversations" class="mcp-chatbot-conversations">
+                        <!-- Conversation rows injected by chatbot_widget.js -->
+                    </div>
+                </aside>
+
                 <!-- Message area -->
                 <div id="mcp_chatbot_messages" class="mcp-chatbot-messages">
                     <!-- Messages are injected by chatbot_widget.js -->
@@ -84,6 +107,17 @@
                 <button id="mcp_chatbot_scroll_bottom" class="mcp-chatbot-scroll-bottom d-none" aria-label="Scroll to bottom">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
+
+                <!-- Read-only footer — shown (in place of the composer) while
+                     the user is viewing a past conversation from the sidebar.
+                     A single button: returns to the live chat if one exists,
+                     otherwise starts a fresh one. Label/icon set by the widget. -->
+                <div id="mcp_chatbot_readonly_bar" class="mcp-chatbot-readonly-bar d-none">
+                    <button class="mcp-chatbot-back-current" type="button">
+                        <i class="fa fa-arrow-left"/>
+                        <span class="mcp-back-label">Back to current chat</span>
+                    </button>
+                </div>
 
                 <!-- Input area -->
                 <div class="mcp-chatbot-input-area">
