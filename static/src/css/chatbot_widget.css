@@ -761,7 +761,7 @@ body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggesti
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    font-size: 13px;
+    font-size: 14px;
     transition: background 0.15s, color 0.15s, transform 0.1s ease;
 }
 
@@ -838,6 +838,7 @@ body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggesti
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    font-size: 14px;
     transition: background 0.15s, color 0.15s, opacity 0.2s ease, transform 0.1s ease;
     opacity: 1;
     transform: scale(1);
