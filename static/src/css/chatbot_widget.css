@@ -743,8 +743,50 @@ body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggesti
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    gap: 6px;
     margin-top: 0;
     flex-shrink: 0;
+}
+
+/* ── Microphone (voice input) button ──────────────────────────── */
+.mcp-chatbot-mic {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 13px;
+    transition: background 0.15s, color 0.15s, transform 0.1s ease;
+}
+
+.mcp-chatbot-mic:hover {
+    background: #eef2f5;
+    color: #3d7ba0;
+}
+
+.mcp-chatbot-mic:disabled {
+    color: #c5c9cf;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Active dictation — pulsing red so the user knows the mic is live. */
+.mcp-chatbot-mic.mcp-mic-recording {
+    background: #e23b3b;
+    color: #ffffff;
+    animation: mcp-mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mcp-mic-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(226, 59, 59, 0.45); }
+    70%  { box-shadow: 0 0 0 6px rgba(226, 59, 59, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(226, 59, 59, 0); }
 }
 
 .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input-actions {

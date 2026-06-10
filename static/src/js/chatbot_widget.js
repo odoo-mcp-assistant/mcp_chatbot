@@ -120,6 +120,7 @@
         var statusEl  = document.querySelector('.mcp-chatbot-status');
         var inputEl   = document.getElementById('mcp_chatbot_input');
         var sendEl    = document.getElementById('mcp_chatbot_send');
+        var micEl     = document.getElementById('mcp_chatbot_mic');
         var wrapperEl = document.querySelector('.mcp-chatbot-input-wrapper');
 
         if (status === 'offline') {
@@ -133,6 +134,7 @@
                 inputEl.placeholder = 'Chat is currently unavailable.';
             }
             if (sendEl)    { sendEl.disabled = true; }
+            if (micEl)     { micEl.disabled = true; }
             if (wrapperEl) { wrapperEl.classList.add('disabled'); }
         } else {
             if (statusEl) {
@@ -145,6 +147,7 @@
                 inputEl.placeholder = 'Ask AI anything...';
             }
             if (sendEl)    { sendEl.disabled = false; }
+            if (micEl)     { micEl.disabled = false; }
             if (wrapperEl) { wrapperEl.classList.remove('disabled'); }
         }
     }
@@ -204,6 +207,7 @@
         var msgArea       = document.getElementById('mcp_chatbot_messages');
         var input         = document.getElementById('mcp_chatbot_input');
         var sendBtn       = document.getElementById('mcp_chatbot_send');
+        var micBtn        = document.getElementById('mcp_chatbot_mic');
         var scrollBottomBtn = document.getElementById('mcp_chatbot_scroll_bottom');
 
         // Conversations sidebar (logged-in, read-only history) nodes.
@@ -889,6 +893,115 @@
         }
 
         sendBtn.addEventListener('click', sendMessage);
+
+        // ── Voice input (Web Speech API dictation) ────────────────
+        // Browser-native speech-to-text. No backend, no cost: the browser
+        // captures the mic and streams back text, which we drop into the
+        // textarea exactly as if the user had typed it. The user still
+        // reviews and presses send — dictation never auto-sends.
+        //
+        // Only Chromium/Safari expose SpeechRecognition; on browsers that
+        // don't (e.g. Firefox) we hide the button entirely rather than show
+        // a control that does nothing.
+        var SpeechRecognition =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!micBtn || !SpeechRecognition) {
+            if (micBtn) { micBtn.classList.add('d-none'); }
+        } else {
+            // recognition  : the live SpeechRecognition instance (null when idle)
+            // recognizing  : true between onstart and onend
+            // micBaseText  : whatever was already in the box when we started,
+            //                so dictation appends instead of clobbering it
+            // finalText    : accumulated finalised transcript for this session
+            var recognition  = null;
+            var recognizing  = false;
+            var micBaseText  = '';
+            var finalText    = '';
+
+            // Reset the button back to its idle look. Called from onend and
+            // onerror (both always fire once a session terminates).
+            function stopMicUI() {
+                recognizing = false;
+                micBtn.classList.remove('mcp-mic-recording');
+                micBtn.title = 'Voice input';
+            }
+
+            function startDictation() {
+                recognition = new SpeechRecognition();
+                // Match the page language so accents/words resolve correctly;
+                // fall back to the browser locale, then English.
+                recognition.lang =
+                    document.documentElement.lang ||
+                    navigator.language ||
+                    'en-US';
+                recognition.interimResults = true;   // show text live as spoken
+                recognition.continuous     = false;  // stop on a natural pause
+                recognition.maxAlternatives = 1;
+
+                // Snapshot the current input so we append after it (with a
+                // separating space) rather than overwriting a half-typed line.
+                micBaseText = input.value
+                    ? input.value.replace(/\s*$/, '') + ' '
+                    : '';
+                finalText = '';
+
+                recognition.onstart = function () {
+                    recognizing = true;
+                    micBtn.classList.add('mcp-mic-recording');
+                    micBtn.title = 'Stop recording';
+                };
+
+                // Each event may carry finalised + still-interim chunks. We
+                // keep finals permanently and repaint the interim tail every
+                // time, so the textarea mirrors what the user is saying.
+                recognition.onresult = function (event) {
+                    var interim = '';
+                    for (var i = event.resultIndex; i < event.results.length; i++) {
+                        var transcript = event.results[i][0].transcript;
+                        if (event.results[i].isFinal) {
+                            finalText += transcript;
+                        } else {
+                            interim += transcript;
+                        }
+                    }
+                    input.value = micBaseText + finalText + interim;
+                    updateSendVisibility();
+                    autoResizeInput();
+                };
+
+                // 'not-allowed' / 'service-not-allowed' = mic permission denied;
+                // 'no-speech' = silence. Either way just reset the UI.
+                recognition.onerror = function (e) {
+                    console.warn('[mcp_chatbot] Speech recognition error:', e.error);
+                    stopMicUI();
+                };
+
+                // Always fires when a session ends (stop, pause, or error).
+                recognition.onend = function () {
+                    stopMicUI();
+                    input.focus();
+                };
+
+                try {
+                    recognition.start();
+                } catch (err) {
+                    // start() throws if called while already running.
+                    console.warn('[mcp_chatbot] Could not start dictation:', err);
+                    stopMicUI();
+                }
+            }
+
+            // Click toggles: a second click (or clicking while live) stops it.
+            micBtn.addEventListener('click', function () {
+                if (input.disabled) { return; }   // chat offline → ignore
+                if (recognizing) {
+                    if (recognition) { recognition.stop(); }
+                    return;
+                }
+                startDictation();
+            });
+        }
 
         // ── Suggestion chips ──────────────────────────────────────
         // Pre-baked example queries below the hero. Clicking a chip
