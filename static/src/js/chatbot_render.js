@@ -151,7 +151,21 @@
         return headerLogo ? headerLogo.src : '/mcp_chatbot/static/src/img/ai-logo.jpeg';
     }
 
-    function appendMessage(container, role, text) {
+    // Append a message bubble. For assistant messages, passing `existingBubble`
+    // appends this text as a new block INSIDE that bubble (used to render a
+    // turn's interim steps + final reply as one continuous message) instead of
+    // creating a separate bubble. Returns the bubble so callers can reuse it.
+    function appendMessage(container, role, text, existingBubble) {
+        // Continue an existing assistant message rather than starting a new one.
+        if (role === 'assistant' && existingBubble) {
+            var span = existingBubble.querySelector('.mcp-assistant-text');
+            if (span) {
+                span.innerHTML = (span.innerHTML || '') + renderMarkdown(text);
+            }
+            container.scrollTop = container.scrollHeight;
+            return existingBubble;
+        }
+
         var bubble = document.createElement('div');
         bubble.className = 'mcp-chatbot-msg ' + role;
 
@@ -180,6 +194,7 @@
 
         container.appendChild(bubble);
         container.scrollTop = container.scrollHeight;
+        return bubble;
     }
 
     // Typewriter-style rendering for assistant replies.
@@ -187,38 +202,51 @@
     // Strategy: render the full markdown → HTML once upfront, then
     // stream the rendered HTML word-by-word using a hidden clone so
     // we never paint a half-open HTML tag into the visible DOM.
-    function streamMessageIntoBubble(container, text, onDone) {
+    // Passing `existingBubble` types this text as a new block appended INSIDE
+    // that bubble (so a turn's interim steps + final reply read as one
+    // continuous message) rather than creating a new bubble. Returns the bubble.
+    function streamMessageIntoBubble(container, text, onDone, existingBubble) {
         var DELAY_MS = 18;
         var STICK_THRESHOLD_PX = 50;
 
-        var bubble = document.createElement('div');
-        bubble.className = 'mcp-chatbot-msg assistant';
+        var bubble, textSpan;
+        // Content already in the bubble; new words type in AFTER it.
+        var prefix = '';
 
-        var inner = document.createElement('div');
-        inner.className = 'mcp-assistant-inner';
+        if (existingBubble) {
+            bubble = existingBubble;
+            textSpan = bubble.querySelector('.mcp-assistant-text');
+            prefix = textSpan.innerHTML || '';
+        } else {
+            bubble = document.createElement('div');
+            bubble.className = 'mcp-chatbot-msg assistant';
 
-        var textSpan = document.createElement('span');
-        textSpan.className = 'mcp-assistant-text';
+            var inner = document.createElement('div');
+            inner.className = 'mcp-assistant-inner';
 
-        var avatarWrap = document.createElement('span');
-        avatarWrap.className = 'mcp-assistant-avatar-wrap';
-        var avatar = document.createElement('img');
-        avatar.className = 'mcp-assistant-avatar';
-        avatar.src = getAvatarSrc();
-        avatar.alt = '';
-        avatarWrap.appendChild(avatar);
+            textSpan = document.createElement('span');
+            textSpan.className = 'mcp-assistant-text';
 
-        inner.appendChild(avatarWrap);
-        inner.appendChild(textSpan);
-        bubble.appendChild(inner);
+            var avatarWrap = document.createElement('span');
+            avatarWrap.className = 'mcp-assistant-avatar-wrap';
+            var avatar = document.createElement('img');
+            avatar.className = 'mcp-assistant-avatar';
+            avatar.src = getAvatarSrc();
+            avatar.alt = '';
+            avatarWrap.appendChild(avatar);
 
-        var initialDistance =
-            container.scrollHeight - container.scrollTop - container.clientHeight;
-        var wasStickyOnEntry = initialDistance < STICK_THRESHOLD_PX;
+            inner.appendChild(avatarWrap);
+            inner.appendChild(textSpan);
+            bubble.appendChild(inner);
 
-        container.appendChild(bubble);
-        if (wasStickyOnEntry) {
-            container.scrollTop = container.scrollHeight;
+            var initialDistance =
+                container.scrollHeight - container.scrollTop - container.clientHeight;
+            var wasStickyOnEntry = initialDistance < STICK_THRESHOLD_PX;
+
+            container.appendChild(bubble);
+            if (wasStickyOnEntry) {
+                container.scrollTop = container.scrollHeight;
+            }
         }
 
         var renderedHTML = renderMarkdown(text);
@@ -226,11 +254,11 @@
         words = words.filter(function (w) { return w.length > 0; });
 
         var i = 0;
-        var accumulated = '';
+        var accumulated = prefix;
 
         function tick() {
             if (i >= words.length) {
-                textSpan.innerHTML = renderedHTML;
+                textSpan.innerHTML = prefix + renderedHTML;
                 if (onDone) { onDone(); }
                 return;
             }
@@ -249,9 +277,10 @@
             setTimeout(tick, DELAY_MS);
         }
         tick();
+        return bubble;
     }
 
-    function showTyping(container) {
+    function showTyping(container, label) {
         var indicator = document.createElement('div');
         indicator.className = 'mcp-chatbot-msg assistant typing';
 
@@ -268,7 +297,7 @@
 
         var textSpan = document.createElement('span');
         textSpan.className = 'mcp-assistant-text';
-        textSpan.textContent = 'Thinking...';
+        textSpan.textContent = label || 'Thinking...';
 
         inner.appendChild(avatarWrap);
         inner.appendChild(textSpan);

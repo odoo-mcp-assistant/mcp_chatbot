@@ -191,6 +191,77 @@
         });
     }
 
+    // ─── FastAPI streaming client (Server-Sent Events) ───────────
+    // Like apiRequest, but for the SSE /message endpoint. POSTs the body
+    // with the JWT, then reads the HTTP response as a stream and calls
+    // onEvent(evt) for every parsed `data:` frame as it arrives. Returns a
+    // promise that resolves when the stream ends and rejects on a hard
+    // failure. Mirrors apiRequest's one-shot JWT refresh on a 401.
+    //
+    // - path:    FastAPI path, e.g. "/mcp_chatbot/message"
+    // - body:    payload object
+    // - onEvent: callback invoked with each decoded event object
+    function streamRequest(path, body, onEvent) {
+        function doFetch() {
+            return fetch(apiBaseUrl + path, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + jwtToken,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body || {}),
+            });
+        }
+
+        // Read res.body to completion, splitting the byte stream into SSE
+        // frames (separated by a blank line) and dispatching each one.
+        function consume(res) {
+            if (!res.ok) { throw new Error('HTTP ' + res.status); }
+            var reader  = res.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer  = '';
+
+            // A frame may hold multiple lines; we only care about `data:` ones.
+            function dispatch(frame) {
+                var dataLines = frame.split('\n')
+                    .filter(function (l) { return l.indexOf('data:') === 0; })
+                    .map(function (l) { return l.slice(5).replace(/^ /, ''); });
+                if (dataLines.length === 0) { return; }
+                var payload = dataLines.join('\n');
+                try {
+                    onEvent(JSON.parse(payload));
+                } catch (e) {
+                    console.warn('[mcp_chatbot] bad SSE frame:', payload);
+                }
+            }
+
+            function pump() {
+                return reader.read().then(function (chunk) {
+                    if (chunk.done) {
+                        // Flush a trailing frame that wasn't \n\n-terminated.
+                        if (buffer.trim()) { dispatch(buffer); }
+                        return;
+                    }
+                    buffer += decoder.decode(chunk.value, { stream: true });
+                    var frames = buffer.split('\n\n');
+                    buffer = frames.pop();   // keep the (possibly partial) last frame
+                    frames.forEach(dispatch);
+                    return pump();
+                });
+            }
+            return pump();
+        }
+
+        return doFetch().then(function (res) {
+            // 401 → mint a fresh JWT against Odoo and replay the request once.
+            if (res.status === 401) {
+                if (!fetchJwtSync()) { throw new Error('JWT refresh failed'); }
+                return doFetch().then(consume);
+            }
+            return consume(res);
+        });
+    }
+
     // ─── Stale-session recovery ──────────────────────────────────
     // Called by the widget when FastAPI reports the chat session
     // was closed server-side (idle-timeout cron, manual end-session,
@@ -217,6 +288,7 @@
     window.McpChatbotAPI = {
         OPEN_KEY:           OPEN_KEY,           // sessionStorage key for "is the bubble open?"
         apiRequest:         apiRequest,         // Authenticated FastAPI client
+        streamRequest:      streamRequest,      // Authenticated SSE client (/message)
         handleSessionGone:  handleSessionGone,  // Rotate anon identity after a closed session
         getPartnerId:       function () { return jwtPartnerId; }, // Read-only accessor
     };
