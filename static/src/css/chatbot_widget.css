@@ -789,6 +789,39 @@ body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggesti
     100% { box-shadow: 0 0 0 0 rgba(226, 59, 59, 0); }
 }
 
+/* ── Transient toast (non-blocking notices) ───────────────────── */
+.mcp-chatbot-toast {
+    position: absolute;
+    left: 50%;
+    bottom: 84px;
+    transform: translateX(-50%) translateY(8px);
+    max-width: 82%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #2b2f36;
+    color: #ffffff;
+    font-size: 12.5px;
+    line-height: 1.35;
+    padding: 8px 14px;
+    border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 20;
+}
+
+.mcp-chatbot-toast .fa {
+    color: #ff9b9b;
+    flex-shrink: 0;
+}
+
+.mcp-chatbot-toast.mcp-toast-show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
 .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-input-actions {
     margin-top: 4px;
 }

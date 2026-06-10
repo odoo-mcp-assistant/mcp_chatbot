@@ -894,6 +894,38 @@
 
         sendBtn.addEventListener('click', sendMessage);
 
+        // ── Transient toast (non-blocking notices) ────────────────
+        // A small auto-dismissing banner anchored above the input, used
+        // for things the user should see but that shouldn't interrupt the
+        // chat (e.g. "Microphone access denied"). Only one shows at a time:
+        // a new toast replaces the current one.
+        var toastTimer = null;
+        function showToast(message) {
+            var existing = chatWin.querySelector('.mcp-chatbot-toast');
+            if (existing) { existing.remove(); }
+            if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+
+            var toast = document.createElement('div');
+            toast.className = 'mcp-chatbot-toast';
+            var icon = document.createElement('i');
+            icon.className = 'fa fa-exclamation-circle';
+            toast.appendChild(icon);
+            var span = document.createElement('span');
+            span.textContent = message;
+            toast.appendChild(span);
+            chatWin.appendChild(toast);
+
+            // Force a reflow so the fade-in transition actually animates.
+            void toast.offsetWidth;
+            toast.classList.add('mcp-toast-show');
+
+            toastTimer = setTimeout(function () {
+                toast.classList.remove('mcp-toast-show');
+                // Remove after the fade-out finishes (matches CSS transition).
+                setTimeout(function () { toast.remove(); }, 200);
+            }, 3500);
+        }
+
         // ── Voice input (Web Speech API dictation) ────────────────
         // Browser-native speech-to-text. No backend, no cost: the browser
         // captures the mic and streams back text, which we drop into the
@@ -970,10 +1002,17 @@
                     autoResizeInput();
                 };
 
-                // 'not-allowed' / 'service-not-allowed' = mic permission denied;
-                // 'no-speech' = silence. Either way just reset the UI.
+                // Surface the user-actionable failures as a toast; benign ones
+                // (e.g. 'no-speech' / 'aborted') just reset the UI silently.
                 recognition.onerror = function (e) {
                     console.warn('[mcp_chatbot] Speech recognition error:', e.error);
+                    var toastMessages = {
+                        'not-allowed':         'Microphone access denied. Check your browser permissions.',
+                        'service-not-allowed': 'Microphone access denied. Check your browser permissions.',
+                        'audio-capture':       'No microphone found. Plug one in and try again.',
+                        'network':             'Voice service unavailable. Check your connection.',
+                    };
+                    if (toastMessages[e.error]) { showToast(toastMessages[e.error]); }
                     stopMicUI();
                 };
 
