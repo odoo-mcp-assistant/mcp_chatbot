@@ -138,6 +138,46 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ------------------------------------------------------------------ #
+    # Abuse / Cost Protection                                             #
+    # ------------------------------------------------------------------ #
+    # Per-identity daily token budgets enforced by the FastAPI sidecar.
+    # A caller that has already spent >= its budget today is refused for
+    # the rest of the (UTC) day; everyone else is unaffected. Set a value
+    # to 0 to disable that budget entirely.
+
+    chatbot_daily_token_budget_authenticated = fields.Integer(
+        string="Daily Token Budget (Logged-in)",
+        config_parameter='mcp_chatbot.daily_token_budget_authenticated',
+        default=500000,
+    )
+
+    chatbot_daily_token_budget_anonymous = fields.Integer(
+        string="Daily Token Budget (Anonymous)",
+        config_parameter='mcp_chatbot.daily_token_budget_anonymous',
+        default=300000,
+    )
+
+    # Extra daily allowance, on top of the anonymous budget, granted to an
+    # anonymous visitor once their session is OTP-verified — for the rest of
+    # that session. Lets a verified visitor keep going without resetting their
+    # already-spent tokens. (Supersedes the verification grace below.)
+    chatbot_verified_anonymous_bonus = fields.Integer(
+        string="Verified Bonus (Anonymous)",
+        config_parameter='mcp_chatbot.verified_anonymous_bonus',
+        default=200000,
+    )
+
+    # Small grace, on top of the anonymous budget, granted the moment an
+    # anonymous visitor STARTS email verification (the send_verification_email
+    # tool fires). Just enough headroom to finish the OTP + order flow so a
+    # mid-checkout visitor isn't cut off and the sale isn't lost.
+    chatbot_otp_pending_grace = fields.Integer(
+        string="Verification Grace (Anonymous)",
+        config_parameter='mcp_chatbot.otp_pending_grace',
+        default=30000,
+    )
+
+    # ------------------------------------------------------------------ #
     # Onchange: clear model when provider changes                         #
     # ------------------------------------------------------------------ #
 

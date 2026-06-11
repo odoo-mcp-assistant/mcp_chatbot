@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================ -->
+    <!-- List view                                                      -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_usage_list" model="ir.ui.view">
+        <field name="name">mcp.chatbot.usage.list</field>
+        <field name="model">mcp.chatbot.usage</field>
+        <field name="arch" type="xml">
+            <list string="Token Usage" default_order="usage_date desc, total_tokens desc">
+                <field name="usage_date"/>
+                <field name="identity_key"/>
+                <field name="partner_id"/>
+                <field name="ip_address"/>
+                <field name="message_count"/>
+                <field name="total_tokens" sum="Total Tokens"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Form view                                                      -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_usage_form" model="ir.ui.view">
+        <field name="name">mcp.chatbot.usage.form</field>
+        <field name="model">mcp.chatbot.usage</field>
+        <field name="arch" type="xml">
+            <form string="Token Usage">
+                <sheet>
+                    <group>
+                        <group string="Identity">
+                            <field name="identity_key"/>
+                            <field name="partner_id"/>
+                            <field name="ip_address"/>
+                        </group>
+                        <group string="Usage">
+                            <field name="usage_date"/>
+                            <field name="message_count"/>
+                            <field name="total_tokens"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Search view                                                    -->
+    <!-- ============================================================ -->
+    <record id="view_mcp_chatbot_usage_search" model="ir.ui.view">
+        <field name="name">mcp.chatbot.usage.search</field>
+        <field name="model">mcp.chatbot.usage</field>
+        <field name="arch" type="xml">
+            <search string="Token Usage">
+                <field name="identity_key"/>
+                <field name="partner_id"/>
+                <field name="ip_address"/>
+                <filter name="today" string="Today"
+                        domain="[('usage_date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="authenticated" string="Logged-in"
+                        domain="[('partner_id', '!=', False)]"/>
+                <filter name="anonymous" string="Anonymous"
+                        domain="[('partner_id', '=', False)]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_date" string="Date"
+                            context="{'group_by': 'usage_date'}"/>
+                    <filter name="group_partner" string="User"
+                            context="{'group_by': 'partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Window action                                                  -->
+    <!-- ============================================================ -->
+    <record id="action_mcp_chatbot_usage" model="ir.actions.act_window">
+        <field name="name">Token Usage</field>
+        <field name="res_model">mcp.chatbot.usage</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_mcp_chatbot_usage_search"/>
+    </record>
+
+    <!-- ============================================================ -->
+    <!-- Menu                                                           -->
+    <!-- ============================================================ -->
+    <menuitem id="menu_mcp_chatbot_usage"
+              name="Token Usage"
+              parent="menu_mcp_chatbot_root"
+              action="action_mcp_chatbot_usage"
+              sequence="20"/>
+
+</odoo>

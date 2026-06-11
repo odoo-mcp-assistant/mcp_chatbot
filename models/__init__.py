@@ -1,6 +1,7 @@
 from . import chatbot_session      # custom.chatbot.session
 from . import chatbot_message      # custom.chatbot.message
 from . import chatbot_user_fact    # mcp.chatbot.user.fact
+from . import chatbot_usage        # mcp.chatbot.usage
 from . import mcp_llm_model
 from . import mcp_llm_provider
 from . import inherit_res_partner

@@ -635,12 +635,21 @@
 
         // Same idea for a failed request: surface the error in whichever view
         // is live, and unlock the composer when we're actually showing it.
-        function failLiveReply() {
+        //
+        // A 429 carries a structured { code, message } from the server: a
+        // daily-budget block ("done for today") or a rate-limit hit ("slow
+        // down") — opposite meanings. For those we show the server's specific
+        // message; everything else falls back to the generic notice.
+        function failLiveReply(err) {
             livePending = false;
             if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
             var container = viewingPast ? liveFragment : msgArea;
+            var KNOWN_LIMIT_CODES = ['daily_budget_exceeded', 'rate_limited'];
+            var message = (err && KNOWN_LIMIT_CODES.indexOf(err.code) !== -1 && err.userMessage)
+                ? err.userMessage
+                : 'An error occurred. Please try again.';
             if (container) {
-                Render.appendMessage(container, 'assistant', 'An error occurred. Please try again.');
+                Render.appendMessage(container, 'assistant', message);
             }
             if (!viewingPast) {
                 sendBtn.disabled = false;
@@ -911,7 +920,7 @@
                 .catch(function (err) {
                     if (sessionGen !== myGen) { return; }   // session ended → drop
                     console.error('[mcp_chatbot] RPC error:', err);
-                    failLiveReply();
+                    failLiveReply(err);
                 });
         }
 

@@ -67,6 +67,19 @@ class ChatbotSession(models.Model):
         readonly=True,
     )
 
+    # Set by the sidecar agent when an anonymous visitor starts email
+    # verification (the `send_verification_email` tool fires). It signals
+    # "this session is mid-checkout", so the per-user token budget grants a
+    # small grace — letting an over-budget visitor finish the OTP + order flow
+    # instead of being cut off and losing the sale. Reset to False naturally
+    # on a fresh session; once the session is verified the grace is superseded
+    # by the larger verified bonus.
+    otp_pending = fields.Boolean(
+        string='Verification In Progress',
+        default=False,
+        copy=False,
+    )
+
     # ------------------------------------------------------------------ #
     # History compression (mirrors history.summary logic in odoo_mcp_addon)
     # ------------------------------------------------------------------ #

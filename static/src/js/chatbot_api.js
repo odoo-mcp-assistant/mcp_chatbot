@@ -173,6 +173,27 @@
             return fetch(apiBaseUrl + path, opts);
         }
 
+        // Build a rejected promise from a failed response, enriching the
+        // Error with anything the server put in the JSON body.  FastAPI wraps
+        // payloads as { detail: ... }; detail is a plain string for ordinary
+        // errors, or an object { code, message } for the rate-limit / daily-
+        // budget 429s.  We expose err.status, err.code and err.userMessage so
+        // the widget can show the right notice instead of a generic one.
+        function rejectWithError(res) {
+            return res.json().catch(function () { return null; }).then(function (data) {
+                var err = new Error('HTTP ' + res.status);
+                err.status = res.status;
+                var detail = data && data.detail;
+                if (detail && typeof detail === 'object') {
+                    err.code = detail.code;
+                    err.userMessage = detail.message;
+                } else if (typeof detail === 'string') {
+                    err.userMessage = detail;
+                }
+                throw err;
+            });
+        }
+
         return doFetch().then(function (res) {
             // 401 = JWT expired or invalid.  Mint a new one against
             // Odoo and retry the original call exactly once.  If the
@@ -180,13 +201,13 @@
             if (res.status === 401) {
                 if (!fetchJwtSync()) { throw new Error('JWT refresh failed'); }
                 return doFetch().then(function (r2) {
-                    if (!r2.ok) { throw new Error('HTTP ' + r2.status); }
+                    if (!r2.ok) { return rejectWithError(r2); }
                     return r2.json();
                 });
             }
-            // Any other non-2xx → propagate as a JS error so the
-            // widget can fall back to its "An error occurred" bubble.
-            if (!res.ok) { throw new Error('HTTP ' + res.status); }
+            // Any other non-2xx → propagate as an enriched JS error so the
+            // widget can show a specific (or generic) failure bubble.
+            if (!res.ok) { return rejectWithError(res); }
             return res.json();
         });
     }
