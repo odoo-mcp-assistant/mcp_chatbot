@@ -245,6 +245,14 @@
         return bubble;
     }
 
+    // Swap the text of an existing typing indicator in place — the avatar and
+    // its spinner keep animating instead of being torn down and rebuilt.
+    function setTypingLabel(indicator, label) {
+        if (!indicator) { return; }
+        var span = indicator.querySelector('.mcp-assistant-text');
+        if (span) { span.textContent = label || 'Thinking...'; }
+    }
+
     function showTyping(container, label) {
         var indicator = document.createElement('div');
         indicator.className = 'mcp-chatbot-msg assistant typing';
@@ -394,6 +402,7 @@
         appendDelta:       appendDelta,
         finalizeBubble:    finalizeBubble,
         showTyping:        showTyping,
+        setTypingLabel:    setTypingLabel,
         showCompactingBar: showCompactingBar,
         setEmptyState:     setEmptyState,
         renderHero:        renderHero,

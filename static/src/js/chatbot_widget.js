@@ -633,15 +633,18 @@
 
         // The round finished streaming and its tool calls are executing. Bank
         // a paragraph break so the next round's text starts a new block, and
-        // swap the indicator to a "doing" label (live view only — the
-        // read-only history view never shows an indicator).
+        // switch the indicator to a "doing" label. When the indicator is
+        // already showing (the round went straight to tools without streaming
+        // text), only its TEXT is swapped — the avatar/spinner keeps animating
+        // instead of being torn down and rebuilt.
         function handleToolStart() {
             var container = viewingPast ? liveFragment : msgArea;
             if (turnBubble && container) {
                 turnBubble = Render.appendDelta(container, turnBubble, '\n\n');
             }
-            if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
-            if (!viewingPast) {
+            if (liveTypingEl) {
+                Render.setTypingLabel(liveTypingEl, randomWorkingLabel());
+            } else if (!viewingPast) {
                 liveTypingEl = Render.showTyping(msgArea, randomWorkingLabel());
             }
         }
