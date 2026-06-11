@@ -45,6 +45,14 @@
     var API    = window.McpChatbotAPI;
     var Render = window.McpChatbotRender;
 
+    // Chatbot availability as reported by GET /info. Starts as null (= not
+    // known yet) and is only ever set from the backend's answer. sendMessage()
+    // hard-gates on this being exactly 'online' — so no message request can
+    // leave the browser while the status is offline OR simply not loaded yet
+    // (slow or failed /info). Disabling the composer in updateStatus() is
+    // cosmetic; this flag is the actual gate.
+    var botStatus = null;
+
     // ──────────────────────────────────────────────────────────────
     // Load history from backend
     // ──────────────────────────────────────────────────────────────
@@ -164,6 +172,10 @@
     API.apiRequest('/mcp_chatbot/info', null, 'GET')
         .then(function (result) {
             if (!result) { return; }
+            // The only place botStatus is ever written — straight from the
+            // backend's answer. Anything other than 'online' keeps sending
+            // blocked.
+            botStatus = result.status || null;
             if (result.bot_name) { updateHeaderName(result.bot_name); }
             if (result.status)   { updateStatus(result.status); }
             // Identity drives the greeting copy (e.g. "Good morning, Mohamed").
@@ -855,6 +867,17 @@
             // Re-entrancy guard — send button stays disabled from the moment
             // a request fires until the typewriter finishes painting the reply.
             if (sendBtn.disabled) { return; }
+
+            // Availability gate — nothing is sent to FastAPI unless GET /info
+            // confirmed the chatbot is online. Blocks both the offline state
+            // (where the composer is disabled anyway) and the window where
+            // /info hasn't answered yet but the HTML defaults left the
+            // composer enabled. Checked BEFORE the optimistic UI paint so a
+            // blocked send leaves no half-drawn user bubble behind.
+            if (botStatus !== 'online') {
+                showToast('Chat is unavailable right now. Please try again in a moment.');
+                return;
+            }
 
             var text = input.value.trim();
             if (!text) { return; }
