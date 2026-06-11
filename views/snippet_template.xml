@@ -122,10 +122,16 @@
                 <!-- Input area -->
                 <div class="mcp-chatbot-input-area">
                     <div class="mcp-chatbot-input-wrapper">
+                        <!-- maxlength mirrors the sidecar's MAX_MESSAGE_LENGTH
+                             (default 2000): the browser blocks typing/pasting
+                             past the cap so the user gets instant feedback
+                             instead of a 400 from the server. The server check
+                             stays the real enforcement; this is UX only. -->
                         <textarea id="mcp_chatbot_input"
                                   class="mcp-chatbot-input"
                                   placeholder="Type your message..."
                                   rows="1"
+                                  maxlength="2000"
                                   autocomplete="off"/>
                         <div class="mcp-chatbot-input-actions">
                             <button id="mcp_chatbot_mic" class="mcp-chatbot-mic" title="Voice input" type="button">

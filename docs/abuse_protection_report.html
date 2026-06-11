@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { margin: 22mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #1f2933;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 4px 0;
+    color: #11324d;
+  }
+  .subtitle { color: #5a6b7b; font-size: 13px; margin: 0 0 4px 0; }
+  .meta { color: #8595a4; font-size: 10.5px; margin: 0 0 18px 0; }
+  hr { border: none; border-top: 2px solid #e3e8ee; margin: 14px 0 20px 0; }
+
+  h2 {
+    font-size: 17px;
+    color: #11324d;
+    margin: 26px 0 8px 0;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #e3e8ee;
+  }
+  h3 { font-size: 13.5px; margin: 16px 0 4px 0; color: #1f2933; }
+
+  p { margin: 6px 0; }
+  ul { margin: 6px 0 6px 0; padding-left: 18px; }
+  li { margin: 3px 0; }
+
+  .lead {
+    background: #f4f7fa;
+    border-left: 4px solid #3b82f6;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin: 10px 0 18px 0;
+  }
+
+  .tier {
+    border: 1px solid #e3e8ee;
+    border-radius: 7px;
+    padding: 2px 16px 12px 16px;
+    margin: 18px 0;
+    page-break-inside: avoid;
+  }
+  .tier-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 12px 0 6px 0;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    color: #fff;
+    white-space: nowrap;
+  }
+  .b-must { background: #c0392b; }
+  .b-best { background: #1e8e5a; }
+  .b-opt  { background: #b9770e; }
+  .b-skip { background: #7b8794; }
+  .tier-title { font-size: 15px; font-weight: 700; color: #11324d; }
+
+  .label {
+    font-weight: 700;
+    color: #11324d;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: .6px;
+  }
+  .block { margin: 8px 0; }
+  .problem { background: #fdf0ee; border-left: 3px solid #c0392b; padding: 8px 12px; border-radius: 4px; }
+  .solution { background: #eef8f2; border-left: 3px solid #1e8e5a; padding: 8px 12px; border-radius: 4px; margin-top: 8px; }
+  .analogy { color: #5a6b7b; font-style: italic; font-size: 11px; margin-top: 6px; }
+  .effort { font-size: 11px; color: #5a6b7b; margin-top: 6px; }
+  .effort b { color: #1f2933; }
+
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 11px; }
+  th, td { border: 1px solid #d9e0e7; padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: #11324d; color: #fff; font-weight: 600; }
+  tr:nth-child(even) td { background: #f7f9fb; }
+
+  code { background: #eef1f4; padding: 1px 5px; border-radius: 3px; font-size: 10.5px; }
+  .footer-note { color: #8595a4; font-size: 10px; margin-top: 22px; border-top: 1px solid #e3e8ee; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+  <h1>Chatbot Abuse &amp; Cost Protection</h1>
+  <p class="subtitle">A tiered plan for deploying the public AI chat widget safely</p>
+  <p class="meta">Project: <code>mcp_chatbot</code> (Odoo addon + FastAPI sidecar) &nbsp;•&nbsp; Prepared 11 June 2026</p>
+  <hr>
+
+  <div class="lead">
+    <b>The core problem in one sentence.</b> The chat widget is public: any visitor &mdash;
+    even one who never logs in &mdash; can send messages, and every message calls a paid AI
+    service that <b>you</b> are billed for. Today there is nothing in the code that limits how
+    many messages a single person (or a script) can send. As shipped, the system trusts users
+    not to abuse it. This report explains, tier by tier, the specific risk and the fix.
+  </div>
+
+  <h2>How a message becomes a cost</h2>
+  <p>
+    When a visitor opens the website, the browser is handed a one-hour access pass (a signed
+    token). With that pass it sends messages straight to the chat server, which calls the AI
+    model (Groq) and any connected tools. <b>You are billed by the volume of text</b> processed.
+    The only checks today are: the message isn&rsquo;t empty, and the bot is switched &ldquo;online&rdquo;.
+    No speed limit, no size limit, no spending limit exists anywhere. Each tier below closes one
+    gap in that chain.
+  </p>
+
+  <!-- TIER 0 -->
+  <div class="tier">
+    <div class="tier-head">
+      <span class="badge b-must">TIER 0 · REQUIRED</span>
+      <span class="tier-title">Basic limits inside your own code</span>
+    </div>
+
+    <div class="block">
+      <span class="label">Problem it solves</span>
+      <div class="problem">
+        Nothing stops one visitor from sending thousands of messages in a loop, pasting an
+        entire book into a single message, or quietly running up a huge bill over a day. A
+        determined person could even use your bot as a <b>free AI service</b> for their own
+        projects &mdash; on your bill.
+      </div>
+    </div>
+
+    <div class="block">
+      <span class="label">Solution</span>
+      <div class="solution">
+        Three small rules added directly to the chat server:
+        <ul>
+          <li><b>Speed limit (rate limiting).</b> e.g. &ldquo;1 message every few seconds, 30 per
+          conversation.&rdquo; A real person never notices; a flooding script is blocked after the
+          first attempt. A ready-made tool (<code>slowapi</code>) does this in a few lines.</li>
+          <li><b>Maximum message length.</b> Reject anything over, say, 2,000 characters &mdash; so
+          no one can make you pay to process a pasted book. One line of code.</li>
+          <li><b>Daily spending kill-switch.</b> Track usage as it happens; when the day&rsquo;s
+          budget is reached, the bot switches itself off until tomorrow. This reuses the
+          on/off &ldquo;status&rdquo; switch the project already has.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="analogy">Coffee-machine view: the machine pours one cup at a time, refuses buckets,
+      and shuts off once the day&rsquo;s coins hit a set amount.</p>
+    <p class="effort"><b>Effort:</b> a few hours. <b>Verdict:</b> do not deploy without this &mdash;
+      it stops the large majority of abuse on its own.</p>
+  </div>
+
+  <!-- TIER 1 -->
+  <div class="tier">
+    <div class="tier-head">
+      <span class="badge b-best">TIER 1 · BEST VALUE</span>
+      <span class="tier-title">A bouncer at the edge (Cloudflare)</span>
+    </div>
+
+    <div class="block">
+      <span class="label">Problem it solves</span>
+      <div class="problem">
+        Even with code-level limits, attack traffic still reaches your server before it gets
+        rejected &mdash; using up your server&rsquo;s capacity, and in some cases costing money
+        before the limit kicks in. Large automated floods can also simply overwhelm the machine.
+      </div>
+    </div>
+
+    <div class="block">
+      <span class="label">Solution</span>
+      <div class="solution">
+        Place a free service (<b>Cloudflare</b>) <b>in front of</b> your server. All internet
+        traffic hits Cloudflare first; it recognizes bots, attack scripts, and floods and blocks
+        them <b>before they ever reach your server</b> &mdash; meaning before they cost you anything.
+        Genuine visitors pass straight through and notice nothing. This is mostly configuration,
+        not programming.
+      </div>
+    </div>
+
+    <p class="analogy">Coffee-machine view: a bouncer on the sidewalk stops obvious troublemakers
+      and robots before they touch the button; real customers walk right past.</p>
+    <p class="effort"><b>Effort:</b> very low (mostly setup). <b>Verdict:</b> biggest protection
+      for the least work &mdash; if you do only one thing, do this.</p>
+  </div>
+
+  <!-- TIER 2 -->
+  <div class="tier">
+    <div class="tier-head">
+      <span class="badge b-opt">TIER 2 · IF NEEDED</span>
+      <span class="tier-title">A quiet &ldquo;prove you&rsquo;re human&rdquo; check</span>
+    </div>
+
+    <div class="block">
+      <span class="label">Problem it solves</span>
+      <div class="problem">
+        Sophisticated bots can imitate real browsers and slip past the limits above, especially
+        when targeting the anonymous (not-logged-in) path where there is no account to hold them
+        accountable.
+      </div>
+    </div>
+
+    <div class="block">
+      <span class="label">Solution</span>
+      <div class="solution">
+        Before a <b>stranger</b> sends their first message, require a quick &ldquo;are you a
+        robot?&rdquo; check. The modern version (<b>Cloudflare Turnstile</b>) is usually
+        <b>invisible</b> &mdash; a real person sees nothing and just chats; a bot is silently
+        stopped. It is not the old &ldquo;click all the traffic lights&rdquo; puzzle.
+      </div>
+    </div>
+
+    <p class="analogy">Coffee-machine view: a small turnstile a person steps through without
+      thinking, but a robot arm can&rsquo;t get past.</p>
+    <p class="effort"><b>Effort:</b> low&ndash;medium. <b>Verdict:</b> add only if abuse continues
+      after Tiers 0 and 1 &mdash; don&rsquo;t add friction for real visitors before you need to.</p>
+  </div>
+
+  <!-- TIER 3 -->
+  <div class="tier">
+    <div class="tier-head">
+      <span class="badge b-skip">TIER 3 · SKIP FOR NOW</span>
+      <span class="tier-title">Content filtering &amp; advanced quotas</span>
+    </div>
+
+    <div class="block">
+      <span class="label">Problem it solves</span>
+      <div class="problem">
+        People may try to trick the bot into saying offensive things under your brand
+        (&ldquo;jailbreaking&rdquo;), or you may eventually want fine-grained per-account usage
+        budgets.
+      </div>
+    </div>
+
+    <div class="block">
+      <span class="label">Solution</span>
+      <div class="solution">
+        AI content-moderation filters on the bot&rsquo;s output, plus per-user quotas. Real, but
+        <b>premature for a first launch</b> &mdash; solve the money and flooding problems first
+        and revisit this only if it becomes a real issue.
+      </div>
+    </div>
+
+    <p class="effort"><b>Effort:</b> high. <b>Verdict:</b> not part of v1.</p>
+  </div>
+
+  <h2>Summary at a glance</h2>
+  <table>
+    <thead>
+      <tr><th style="width:14%">Tier</th><th style="width:30%">What it is</th><th style="width:30%">Main problem it solves</th><th style="width:12%">Effort</th><th style="width:14%">Verdict</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><b>0</b></td><td>Speed limit, message-size cap, daily spend kill-switch (in your code)</td><td>One person flooding messages or running up the bill</td><td>Few hours</td><td>Required before launch</td></tr>
+      <tr><td><b>1</b></td><td>Cloudflare bouncer in front of the server</td><td>Automated floods reaching your server at all</td><td>Mostly config</td><td>Best value &mdash; do this</td></tr>
+      <tr><td><b>2</b></td><td>Invisible &ldquo;are you human?&rdquo; check for strangers</td><td>Advanced bots imitating real browsers</td><td>Low&ndash;medium</td><td>Only if abuse continues</td></tr>
+      <tr><td><b>3</b></td><td>Content filters &amp; per-account quotas</td><td>Brand-damaging jailbreaks; fine-grained budgets</td><td>High</td><td>Skip for v1</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Bottom line</h2>
+  <p>
+    Real products do <b>not</b> rely on users&rsquo; goodwill &mdash; that is simply where this
+    code stands today. The practical path is to put up two cheap fences before going live:
+    <b>Tier 0</b> (limits in the code) and <b>Tier 1</b> (the free Cloudflare bouncer). Together
+    they handle the overwhelming majority of abuse. Tiers 2 and 3 are held in reserve and added
+    only if real-world abuse demands them.
+  </p>
+
+  <p class="footer-note">
+    Related hardening note (outside the tiers): keep the AI provider key secret and rotate it if
+    it is ever exposed &mdash; a leaked key is the same &ldquo;unlimited spend&rdquo; risk through a
+    different door.
+  </p>
+
+</body>
+</html>
