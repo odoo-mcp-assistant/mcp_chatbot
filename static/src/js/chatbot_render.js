@@ -152,9 +152,9 @@
     }
 
     // Append a message bubble. For assistant messages, passing `existingBubble`
-    // appends this text as a new block INSIDE that bubble (used to render a
-    // turn's interim steps + final reply as one continuous message) instead of
-    // creating a separate bubble. Returns the bubble so callers can reuse it.
+    // appends this text as a new block INSIDE that bubble (used to keep a turn
+    // one continuous message, e.g. an error line after streamed text) instead
+    // of creating a separate bubble. Returns the bubble so callers can reuse it.
     function appendMessage(container, role, text, existingBubble) {
         // Continue an existing assistant message rather than starting a new one.
         if (role === 'assistant' && existingBubble) {
@@ -197,86 +197,51 @@
         return bubble;
     }
 
-    // Typewriter-style rendering for assistant replies.
+    // ── Live token streaming ──────────────────────────────────────
+    // The backend streams the assistant's text token-by-token (SSE deltas);
+    // there is no client-side typewriter — what you see paint IS the model
+    // generating.
     //
-    // Strategy: render the full markdown → HTML once upfront, then
-    // stream the rendered HTML word-by-word using a hidden clone so
-    // we never paint a half-open HTML tag into the visible DOM.
-    // Passing `existingBubble` types this text as a new block appended INSIDE
-    // that bubble (so a turn's interim steps + final reply read as one
-    // continuous message) rather than creating a new bubble. Returns the bubble.
-    function streamMessageIntoBubble(container, text, onDone, existingBubble) {
-        var DELAY_MS = 18;
+    // appendDelta() accumulates the RAW markdown of the whole turn on the
+    // bubble node itself (bubble._mcpRaw) and re-renders it on every chunk,
+    // so partially-streamed markdown (an unclosed **bold**, half a table) is
+    // re-evaluated as more text arrives instead of freezing as broken HTML.
+    // Creates the bubble on the first chunk. Sticky-scroll: only follows the
+    // stream while the user is already near the bottom. Returns the bubble.
+    //
+    // Works against the detached history fragment too: a DocumentFragment has
+    // no scroll metrics, so the sticky check is simply never true there.
+    function appendDelta(container, bubble, text) {
         var STICK_THRESHOLD_PX = 50;
-
-        var bubble, textSpan;
-        // Content already in the bubble; new words type in AFTER it.
-        var prefix = '';
-
-        if (existingBubble) {
-            bubble = existingBubble;
-            textSpan = bubble.querySelector('.mcp-assistant-text');
-            prefix = textSpan.innerHTML || '';
-        } else {
-            bubble = document.createElement('div');
-            bubble.className = 'mcp-chatbot-msg assistant';
-
-            var inner = document.createElement('div');
-            inner.className = 'mcp-assistant-inner';
-
-            textSpan = document.createElement('span');
-            textSpan.className = 'mcp-assistant-text';
-
-            var avatarWrap = document.createElement('span');
-            avatarWrap.className = 'mcp-assistant-avatar-wrap';
-            var avatar = document.createElement('img');
-            avatar.className = 'mcp-assistant-avatar';
-            avatar.src = getAvatarSrc();
-            avatar.alt = '';
-            avatarWrap.appendChild(avatar);
-
-            inner.appendChild(avatarWrap);
-            inner.appendChild(textSpan);
-            bubble.appendChild(inner);
-
-            var initialDistance =
-                container.scrollHeight - container.scrollTop - container.clientHeight;
-            var wasStickyOnEntry = initialDistance < STICK_THRESHOLD_PX;
-
-            container.appendChild(bubble);
-            if (wasStickyOnEntry) {
-                container.scrollTop = container.scrollHeight;
-            }
+        if (!bubble) {
+            bubble = appendMessage(container, 'assistant', '');
+            bubble._mcpRaw = '';
         }
+        bubble._mcpRaw = (bubble._mcpRaw || '') + text;
 
-        var renderedHTML = renderMarkdown(text);
-        var words = renderedHTML.split(/(<[^>]+>|\s+)/);
-        words = words.filter(function (w) { return w.length > 0; });
+        var distance =
+            container.scrollHeight - container.scrollTop - container.clientHeight;
+        var wasSticky = distance < STICK_THRESHOLD_PX;
 
-        var i = 0;
-        var accumulated = prefix;
+        var span = bubble.querySelector('.mcp-assistant-text');
+        if (span) { span.innerHTML = renderMarkdown(bubble._mcpRaw); }
 
-        function tick() {
-            if (i >= words.length) {
-                textSpan.innerHTML = prefix + renderedHTML;
-                if (onDone) { onDone(); }
-                return;
-            }
+        if (wasSticky) { container.scrollTop = container.scrollHeight; }
+        return bubble;
+    }
 
-            var distanceFromBottom =
-                container.scrollHeight - container.scrollTop - container.clientHeight;
-            var wasStickyToBottom = distanceFromBottom < STICK_THRESHOLD_PX;
-
-            accumulated += words[i];
-            i++;
-            textSpan.innerHTML = accumulated;
-
-            if (wasStickyToBottom) {
-                container.scrollTop = container.scrollHeight;
-            }
-            setTimeout(tick, DELAY_MS);
+    // Replace the streamed bubble's content with the authoritative full-turn
+    // text carried by the terminal event. Covers replies that never streamed
+    // (providers that stash the text in the reasoning trace) and any
+    // divergence from a forced tool retry. Creates the bubble if no delta
+    // ever arrived. Returns the bubble.
+    function finalizeBubble(container, bubble, fullText) {
+        if (!bubble) {
+            return appendMessage(container, 'assistant', fullText);
         }
-        tick();
+        bubble._mcpRaw = fullText;
+        var span = bubble.querySelector('.mcp-assistant-text');
+        if (span) { span.innerHTML = renderMarkdown(fullText); }
         return bubble;
     }
 
@@ -424,15 +389,16 @@
     }
 
     window.McpChatbotRender = {
-        renderMarkdown:          renderMarkdown,
-        appendMessage:           appendMessage,
-        streamMessageIntoBubble: streamMessageIntoBubble,
-        showTyping:              showTyping,
-        showCompactingBar:       showCompactingBar,
-        setEmptyState:           setEmptyState,
-        renderHero:              renderHero,
-        removeHero:              removeHero,
-        setHeroIdentity:         setHeroIdentity,
+        renderMarkdown:    renderMarkdown,
+        appendMessage:     appendMessage,
+        appendDelta:       appendDelta,
+        finalizeBubble:    finalizeBubble,
+        showTyping:        showTyping,
+        showCompactingBar: showCompactingBar,
+        setEmptyState:     setEmptyState,
+        renderHero:        renderHero,
+        removeHero:        removeHero,
+        setHeroIdentity:   setHeroIdentity,
     };
 
 })();

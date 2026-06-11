@@ -275,10 +275,10 @@
         var livePending = false;
         var liveTypingEl = null;
 
-        // The single assistant bubble holding the current turn (interim steps +
-        // final reply). Created on the first rendered chunk, reused for the rest,
-        // and reset to null at the start of each send. Tracked at widget scope so
-        // chunks deliver into the same bubble even after a detour into history.
+        // The single assistant bubble holding the current turn's streamed text.
+        // Created on the first delta, reused for every later one, and reset to
+        // null at the start of each send. Tracked at widget scope so deltas
+        // keep landing in the same bubble even after a detour into history.
         var turnBubble = null;
 
         // ── Scroll-to-bottom button ───────────────────────────────
@@ -589,22 +589,22 @@
         }
 
         // ── Streaming reply rendering ─────────────────────────────
-        // The /message endpoint streams Server-Sent Events: zero or more
-        // `interim` narration steps the agent emits alongside its tool calls,
-        // then one terminating `final` (or `error` / `closed`). These helpers
-        // render ONE event at a time; sendMessage() serialises them through a
-        // queue so the word-by-word typewriter for one event finishes before
-        // the next begins. Each helper takes a `done` callback to advance the
-        // queue, and re-checks `viewingPast` so a detour into the history view
-        // mid-stream routes the remaining output into the detached live
-        // fragment (restored intact when the user returns) instead of painting
-        // over the past conversation.
+        // The /message endpoint streams Server-Sent Events:
+        //   delta      — one token chunk of assistant text, live from the LLM
+        //   tool_start — the round produced tool calls, now executing
+        //   final      — terminal; carries the authoritative full-turn text
+        //   error / closed — terminal failure / session gone
+        // Deltas paint synchronously — the model's own generation speed IS the
+        // typing effect — so there is no pacing queue. Every handler re-checks
+        // `viewingPast` so a detour into the history view mid-stream routes
+        // output into the detached live fragment (restored intact when the
+        // user returns) instead of painting over the past conversation.
 
-        // Action phrases for the post-interim beat. The indicator looks exactly
+        // Busy labels shown while tools execute. The indicator looks exactly
         // like the first "Thinking..." beat (same avatar + spinner) — only the
-        // text changes: after an interim step the agent is executing a tool, so
-        // we show a random "doing" word instead. Kept step-count-agnostic (no
-        // "almost done" that could be wrong if more steps follow).
+        // text changes: the agent is acting now, not reasoning. Kept
+        // step-count-agnostic (no "almost done" that could be wrong if more
+        // steps follow).
         var WORKING_LABELS = [
             'Working...',
             'Working on it...',
@@ -616,66 +616,72 @@
             return WORKING_LABELS[Math.floor(Math.random() * WORKING_LABELS.length)];
         }
 
-        // A turn's interim narration steps and final reply are rendered into ONE
-        // assistant bubble (`turnBubble`, tracked at widget scope) so they read
-        // as a single continuous message — one avatar, one separator line — and
-        // are persisted server-side as a single assistant message too. The first
-        // rendered chunk creates the bubble; later chunks append into it.
+        // A turn streams into ONE assistant bubble (`turnBubble`, tracked at
+        // widget scope): the first delta creates it, every later delta —
+        // including post-tool rounds — appends into it. One avatar, one
+        // separator line, one continuous message; persisted server-side as a
+        // single assistant message too.
 
-        // Stream one interim narration step into the turn bubble, then bring the
-        // "Thinking…" beat (avatar + spinner) back until the next event arrives.
-        function deliverInterim(text, done) {
-            if (viewingPast) {
-                turnBubble = Render.appendMessage(liveFragment, 'assistant', text, turnBubble);
-                done();
-                return;
-            }
-            turnBubble = Render.streamMessageIntoBubble(msgArea, text, function () {
-                // Same thinking indicator as the first beat (avatar + spinner),
-                // only the text differs — a random "doing" word, since the agent
-                // is now executing a tool rather than reasoning.
-                if (!viewingPast) { liveTypingEl = Render.showTyping(msgArea, randomWorkingLabel()); }
-                done();
-            }, turnBubble);
+        // One streamed token chunk. The first chunk of a round replaces the
+        // busy indicator with live text.
+        function handleDelta(text) {
+            if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
+            var container = viewingPast ? liveFragment : msgArea;
+            if (!container) { return; }
+            turnBubble = Render.appendDelta(container, turnBubble, text);
         }
 
-        // Stream the final reply into the same turn bubble (optionally behind the
-        // 5s compacting bar when the server summarised history) and unlock the
-        // composer.
-        function deliverFinal(evt, done) {
+        // The round finished streaming and its tool calls are executing. Bank
+        // a paragraph break so the next round's text starts a new block, and
+        // swap the indicator to a "doing" label (live view only — the
+        // read-only history view never shows an indicator).
+        function handleToolStart() {
+            var container = viewingPast ? liveFragment : msgArea;
+            if (turnBubble && container) {
+                turnBubble = Render.appendDelta(container, turnBubble, '\n\n');
+            }
+            if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
+            if (!viewingPast) {
+                liveTypingEl = Render.showTyping(msgArea, randomWorkingLabel());
+            }
+        }
+
+        // Terminal event: rebuild the bubble from the authoritative full-turn
+        // text (fixes any partially-streamed markdown and covers replies that
+        // never streamed at all), then unlock the composer. When the server
+        // compacted history this turn, the 5s compacting bar shows first.
+        function handleFinal(evt) {
             livePending = false;
-            var replyText = (evt && evt.content) ? evt.content : 'Sorry, I could not get a reply.';
+            if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
+            var fullText = (evt && evt.content) ? evt.content : 'Sorry, I could not get a reply.';
 
-            if (viewingPast) {
-                turnBubble = Render.appendMessage(liveFragment, 'assistant', replyText, turnBubble);
-                done();
-                return;
-            }
-
-            function unlockSend() {
-                sendBtn.disabled = false;
-                updateSendVisibility();
-                input.focus();
-            }
-
-            if (evt && evt.summarized) {
-                Render.showCompactingBar(msgArea);
-                setTimeout(function () {
-                    turnBubble = Render.streamMessageIntoBubble(msgArea, replyText, unlockSend, turnBubble);
+            function finalize() {
+                var container = viewingPast ? liveFragment : msgArea;
+                if (container) {
+                    turnBubble = Render.finalizeBubble(container, turnBubble, fullText);
+                }
+                if (!viewingPast) {
                     setEndSessionVisible(true);
-                    done();
-                }, 5000);
+                    sendBtn.disabled = false;
+                    updateSendVisibility();
+                    input.focus();
+                }
+            }
+
+            if (evt && evt.summarized && !viewingPast) {
+                Render.showCompactingBar(msgArea);
+                setTimeout(finalize, 5000);
             } else {
-                turnBubble = Render.streamMessageIntoBubble(msgArea, replyText, unlockSend, turnBubble);
-                setEndSessionVisible(true);
-                done();
+                finalize();
             }
         }
 
-        // Surface a pipeline error in whichever view is live (appended to the
-        // turn bubble if one exists), and unlock the composer when showing it.
-        function deliverError(text, done) {
+        // Surface a stream/pipeline failure in whichever view is live
+        // (appended to the turn bubble if one exists), and unlock the
+        // composer when we're actually showing it.
+        function handleError(text) {
             livePending = false;
+            if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
             var container = viewingPast ? liveFragment : msgArea;
             if (container) {
                 turnBubble = Render.appendMessage(container, 'assistant', text || 'An error occurred. Please try again.', turnBubble);
@@ -685,20 +691,19 @@
                 updateSendVisibility();
                 input.focus();
             }
-            done();
         }
 
-        // Dispatch one streamed event. Always clears the current thinking
-        // indicator first, since every event either paints content or ends
-        // the turn.
-        function renderReplyEvent(evt, done) {
-            if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
+        // Dispatch one streamed event.
+        function renderReplyEvent(evt) {
             switch (evt && evt.type) {
-                case 'interim': deliverInterim(evt.content, done); break;
-                case 'final':   deliverFinal(evt, done);           break;
-                case 'error':   deliverError(evt.content, done);   break;
-                case 'closed':  livePending = false; done();        break;  // session gone → drop quietly
-                default:        done();
+                case 'delta':      handleDelta(evt.content || ''); break;
+                case 'tool_start': handleToolStart(); break;
+                case 'final':      handleFinal(evt); break;
+                case 'error':      handleError(evt.content); break;
+                case 'closed':     // session gone → stop quietly
+                    livePending = false;
+                    if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
+                    break;
             }
         }
 
@@ -913,12 +918,12 @@
         //   2. Optimistically append the user bubble.
         //   3. Disable the send button (re-entrancy guard).
         //   4. Show the "Thinking..." typing indicator.
-        //   5. POST /mcp_chatbot/message with { message: text }.
-        //   6. On response → remove the indicator, stream the reply
-        //      word-by-word, re-enable send when streaming finishes.
+        //   5. POST /mcp_chatbot/message with { message: text } (SSE stream).
+        //   6. Deltas replace the indicator and paint live into the turn
+        //      bubble; `final` rebuilds it and re-enables send.
         function sendMessage() {
             // Re-entrancy guard — send button stays disabled from the moment
-            // a request fires until the typewriter finishes painting the reply.
+            // a request fires until the terminal stream event unlocks it.
             if (sendBtn.disabled) { return; }
 
             var text = input.value.trim();
@@ -949,45 +954,29 @@
             // delivered to the (detached) live view via the render helpers.
             var myGen = sessionGen;
 
-            // SSE events can arrive faster than the typewriter paints them, so
-            // we buffer them and render strictly one at a time: the next event
-            // only starts once renderReplyEvent calls back. `rendering` guards
-            // re-entrancy; `pump` drains the queue.
-            var queue = [];
-            var rendering = false;
-            // Tracks whether a terminating event (final/error/closed) has been
-            // received, so we can recover if the stream ends without one.
+            // Deltas paint synchronously, so events apply directly as they
+            // arrive — no pacing queue. `gotTerminal` tracks whether a
+            // terminating event (final/error/closed) was received, so a stream
+            // that drops mid-turn still unlocks the composer with an error.
             var gotTerminal = false;
-            function pump() {
-                if (sessionGen !== myGen) { queue.length = 0; return; }  // session ended → drop
-                if (rendering || queue.length === 0) { return; }
-                rendering = true;
-                renderReplyEvent(queue.shift(), function () {
-                    rendering = false;
-                    pump();
-                });
-            }
 
             API.streamRequest('/mcp_chatbot/message', { message: text }, function (evt) {
                 if (sessionGen !== myGen) { return; }   // session ended → drop
                 if (evt && (evt.type === 'final' || evt.type === 'error' || evt.type === 'closed')) {
                     gotTerminal = true;
                 }
-                queue.push(evt);
-                pump();
+                renderReplyEvent(evt);
             }).then(function () {
                 // Stream closed cleanly but never delivered a terminal event
                 // (e.g. the connection dropped) → surface an error so the user
                 // isn't left with a permanently locked composer.
                 if (sessionGen !== myGen || gotTerminal) { return; }
-                queue.push({ type: 'error', content: 'The connection was interrupted. Please try again.' });
-                pump();
+                renderReplyEvent({ type: 'error', content: 'The connection was interrupted. Please try again.' });
             }).catch(function (err) {
                 if (sessionGen !== myGen) { return; }   // session ended → drop
                 console.error('[mcp_chatbot] stream error:', err);
                 if (gotTerminal) { return; }
-                queue.push({ type: 'error', content: 'An error occurred. Please try again.' });
-                pump();
+                renderReplyEvent({ type: 'error', content: 'An error occurred. Please try again.' });
             });
         }
 
