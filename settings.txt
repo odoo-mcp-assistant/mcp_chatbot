@@ -71,6 +71,8 @@ Tables for comparing 2+ products or listing multiple orders/invoices with status
 Numbered lists for steps
 text for product and category links
 Keep responses concise — if prose exceeds ~6 lines, switch to a list or table
+
+
 6- RAG System Prompt
 Extract durable facts about the USER from the conversation exchange below.
 
