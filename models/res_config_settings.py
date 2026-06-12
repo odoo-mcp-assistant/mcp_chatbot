@@ -145,6 +145,18 @@ class ResConfigSettings(models.TransientModel):
     # the rest of the (UTC) day; everyone else is unaffected. Set a value
     # to 0 to disable that budget entirely.
 
+    # Master switch for the daily token budgets below. When off, the sidecar
+    # skips the budget check entirely but KEEPS recording usage — so the
+    # Token Usage records stay populated and turning the limit back on later
+    # is informed by real consumption data. Not bound via config_parameter=
+    # because Odoo deletes a boolean param when saved as False, which would
+    # make "disabled" indistinguishable from "never configured" on the
+    # sidecar side; get_values/set_values store an explicit 'True'/'False'.
+    chatbot_usage_limit_enabled = fields.Boolean(
+        string="Enable Usage Limits",
+        default=True,
+    )
+
     chatbot_daily_token_budget_authenticated = fields.Integer(
         string="Daily Token Budget (Logged-in)",
         config_parameter='mcp_chatbot.daily_token_budget_authenticated',
@@ -271,6 +283,13 @@ class ResConfigSettings(models.TransientModel):
         else:
             res['chatbot_fact_model_id'] = False
 
+        # Usage-limit master switch — stored as 'True'/'False' strings (see
+        # field comment). Missing param (fresh install) defaults to enabled.
+        res['chatbot_usage_limit_enabled'] = (
+            (param.get_param('mcp_chatbot.usage_limit_enabled') or 'True')
+            .strip().lower() == 'true'
+        )
+
         return res
 
     def set_values(self):
@@ -299,6 +318,10 @@ class ResConfigSettings(models.TransientModel):
         param.set_param(
             'mcp_chatbot.fact_model_id',
             self.chatbot_fact_model_id.id or False,
+        )
+        param.set_param(
+            'mcp_chatbot.usage_limit_enabled',
+            'True' if self.chatbot_usage_limit_enabled else 'False',
         )
 
         # notify FastAPI to reload its config snapshot — AFTER commit so

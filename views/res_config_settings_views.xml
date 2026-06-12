@@ -151,24 +151,38 @@
                     <!-- Abuse / Cost Protection -->
                     <block title="Abuse / Cost Protection"
                            name="mcp_chatbot_usage">
+                        <setting string="Enable Usage Limits"
+                                 help="Master switch for the per-user daily token budgets below. When off, nobody is blocked but usage keeps being recorded, so the Token Usage records stay accurate."
+                                 id="chatbot_usage_limit_enabled_setting">
+                            <field name="chatbot_usage_limit_enabled"/>
+                        </setting>
+                    </block>
+
+                    <!-- Budget fields in their own (untitled) block so the
+                         master switch above sits alone on its row. -->
+                    <block name="mcp_chatbot_usage_budgets">
                         <setting string="Daily Token Budget (Logged-in)"
                                  help="Maximum tokens a logged-in user may spend per day (UTC). When reached, only that user is blocked until the next day. Set 0 to disable."
-                                 id="chatbot_daily_token_budget_authenticated_setting">
+                                 id="chatbot_daily_token_budget_authenticated_setting"
+                                 invisible="not chatbot_usage_limit_enabled">
                             <field name="chatbot_daily_token_budget_authenticated"/>
                         </setting>
                         <setting string="Daily Token Budget (Anonymous)"
                                  help="Maximum tokens an anonymous visitor (keyed by IP) may spend per day (UTC). When reached, only that visitor is blocked until the next day. Set 0 to disable."
-                                 id="chatbot_daily_token_budget_anonymous_setting">
+                                 id="chatbot_daily_token_budget_anonymous_setting"
+                                 invisible="not chatbot_usage_limit_enabled">
                             <field name="chatbot_daily_token_budget_anonymous"/>
                         </setting>
                         <setting string="Verified Bonus (Anonymous)"
                                  help="Extra daily tokens added to an anonymous visitor's budget once their session is OTP-verified (for the rest of that session). 200000 brings them to parity with a logged-in user."
-                                 id="chatbot_verified_anonymous_bonus_setting">
+                                 id="chatbot_verified_anonymous_bonus_setting"
+                                 invisible="not chatbot_usage_limit_enabled">
                             <field name="chatbot_verified_anonymous_bonus"/>
                         </setting>
                         <setting string="Verification Grace (Anonymous)"
                                  help="Small extra allowance granted the moment an anonymous visitor starts email verification, so an over-budget visitor can still finish the OTP + order flow. Superseded by the verified bonus once verification completes."
-                                 id="chatbot_otp_pending_grace_setting">
+                                 id="chatbot_otp_pending_grace_setting"
+                                 invisible="not chatbot_usage_limit_enabled">
                             <field name="chatbot_otp_pending_grace"/>
                         </setting>
                     </block>
