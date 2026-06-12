@@ -173,6 +173,16 @@
                         </setting>
                     </block>
 
+                    <!-- Data Retention -->
+                    <block title="Data Retention"
+                           name="mcp_chatbot_retention">
+                        <setting string="Transcript Retention (days)"
+                                 help="Closed conversations (messages + rating) older than this many days are deleted by a daily cron. Saved user facts are kept. Set 0 to keep transcripts forever (not recommended for privacy/GDPR)."
+                                 id="chatbot_transcript_retention_days_setting">
+                            <field name="chatbot_transcript_retention_days"/>
+                        </setting>
+                    </block>
+
                 </app>
             </xpath>
         </field>

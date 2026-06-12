@@ -41,4 +41,14 @@
         <field name="active">True</field>
     </record>
 
+    <record id="ir_cron_delete_old_conversations" model="ir.cron">
+        <field name="name">MCP Chatbot: Delete Old Conversations (Retention)</field>
+        <field name="model_id" ref="model_mcp_chatbot_session"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_delete_old_conversations()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active">True</field>
+    </record>
+
 </odoo>

@@ -594,6 +594,12 @@
             }
         }
 
+        // The server sets usage_warning on the reply once a turn pushes the
+        // caller past ~90% of their daily token budget. Shown as a toast once
+        // per page load — not reset on end-session, because the budget is per
+        // day per visitor, not per conversation.
+        var usageWarningShown = false;
+
         // Deliver a completed /message reply. In the live view it streams in and
         // unlocks the composer; while browsing history it's added (static) to the
         // preserved fragment so it's already there when the user returns.
@@ -602,6 +608,15 @@
             var replyText = (result && result.reply)
                 ? result.reply
                 : 'Sorry, I could not get a reply.';
+
+            if (result && result.usage_warning && !usageWarningShown) {
+                usageWarningShown = true;
+                showToast("You're approaching today's usage limit.", {
+                    variant: 'warning',
+                    duration: 10000,
+                    dismissible: true,
+                });
+            }
 
             // Replace the thinking indicator wherever it currently lives.
             if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
@@ -636,21 +651,31 @@
         // Same idea for a failed request: surface the error in whichever view
         // is live, and unlock the composer when we're actually showing it.
         //
-        // A 429 carries a structured { code, message } from the server: a
-        // daily-budget block ("done for today") or a rate-limit hit ("slow
-        // down") — opposite meanings. For those we show the server's specific
-        // message; everything else falls back to the generic notice.
+        // The server marks two limit conditions with a structured { code,
+        // message }: a daily-budget block ("done for today") or a rate-limit
+        // hit ("slow down"). Neither is part of the conversation, so we show
+        // them as a transient toast (the same notice style as a denied
+        // microphone permission) rather than a fake assistant bubble. Every
+        // other failure still falls back to an inline assistant notice.
         function failLiveReply(err) {
             livePending = false;
             if (liveTypingEl) { liveTypingEl.remove(); liveTypingEl = null; }
-            var container = viewingPast ? liveFragment : msgArea;
+
             var KNOWN_LIMIT_CODES = ['daily_budget_exceeded', 'rate_limited'];
-            var message = (err && KNOWN_LIMIT_CODES.indexOf(err.code) !== -1 && err.userMessage)
-                ? err.userMessage
-                : 'An error occurred. Please try again.';
-            if (container) {
-                Render.appendMessage(container, 'assistant', message);
+            var isLimit = err && KNOWN_LIMIT_CODES.indexOf(err.code) !== -1 && err.userMessage;
+
+            if (isLimit) {
+                showToast(err.userMessage, {
+                    duration: 10000,
+                    dismissible: true,
+                });
+            } else {
+                var container = viewingPast ? liveFragment : msgArea;
+                if (container) {
+                    Render.appendMessage(container, 'assistant', 'An error occurred. Please try again.');
+                }
             }
+
             if (!viewingPast) {
                 sendBtn.disabled = false;
                 updateSendVisibility();
@@ -931,20 +956,53 @@
         // for things the user should see but that shouldn't interrupt the
         // chat (e.g. "Microphone access denied"). Only one shows at a time:
         // a new toast replaces the current one.
+        //
+        // opts (all optional):
+        //   variant:     'warning' → amber icon instead of the danger red
+        //   duration:    ms before auto-dismiss (default 3500)
+        //   dismissible: true → adds an X button to close it early
         var toastTimer = null;
-        function showToast(message) {
+        function hideToast(toast) {
+            toast.classList.remove('mcp-toast-show');
+            // Remove after the fade-out finishes (matches CSS transition).
+            setTimeout(function () { toast.remove(); }, 200);
+        }
+        function showToast(message, opts) {
+            opts = opts || {};
             var existing = chatWin.querySelector('.mcp-chatbot-toast');
             if (existing) { existing.remove(); }
             if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
 
             var toast = document.createElement('div');
             toast.className = 'mcp-chatbot-toast';
+            if (opts.variant === 'warning') {
+                toast.classList.add('mcp-toast-warning');
+            }
             var icon = document.createElement('i');
-            icon.className = 'fa fa-exclamation-circle';
+            icon.className = opts.variant === 'warning'
+                ? 'fa fa-exclamation-triangle'
+                : 'fa fa-exclamation-circle';
             toast.appendChild(icon);
             var span = document.createElement('span');
             span.textContent = message;
             toast.appendChild(span);
+
+            if (opts.dismissible) {
+                // The base toast is click-through (pointer-events: none); the
+                // dismissible class re-enables clicks so the X works.
+                toast.classList.add('mcp-toast-dismissible');
+                var closeBtn = document.createElement('button');
+                closeBtn.type = 'button';
+                closeBtn.className = 'mcp-toast-close';
+                closeBtn.setAttribute('aria-label', 'Dismiss');
+                closeBtn.innerHTML = '&times;';
+                closeBtn.addEventListener('click', function () {
+                    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+                    hideToast(toast);
+                });
+                toast.appendChild(closeBtn);
+            }
+
             chatWin.appendChild(toast);
 
             // Force a reflow so the fade-in transition actually animates.
@@ -952,10 +1010,8 @@
             toast.classList.add('mcp-toast-show');
 
             toastTimer = setTimeout(function () {
-                toast.classList.remove('mcp-toast-show');
-                // Remove after the fade-out finishes (matches CSS transition).
-                setTimeout(function () { toast.remove(); }, 200);
-            }, 3500);
+                hideToast(toast);
+            }, opts.duration || 3500);
         }
 
         // ── Voice input (Web Speech API dictation) ────────────────

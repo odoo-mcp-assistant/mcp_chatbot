@@ -1,5 +1,9 @@
-from odoo import models, fields, api
+import logging
 from datetime import timedelta
+
+from odoo import models, fields, api
+
+_logger = logging.getLogger(__name__)
 
 
 class ChatbotSession(models.Model):
@@ -243,3 +247,44 @@ class ChatbotSession(models.Model):
         ])
         if idle_sessions:
             idle_sessions.action_close()
+
+    # ------------------------------------------------------------------ #
+    # Cron: transcript retention                                           #
+    # ------------------------------------------------------------------ #
+
+    @api.model
+    def cron_delete_old_conversations(self):
+        """
+        Called by the scheduled action once a day.
+        Deletes closed conversations whose last activity is older than
+        mcp_chatbot.transcript_retention_days (default 90; 0 disables).
+
+        Transcripts contain PII (names, emails, order details), so they get
+        a shelf life: keeping them ~90 days covers debugging, disputes and
+        abuse investigation, while bounding both the privacy exposure and
+        the damage a database leak could do. Messages and the rating are
+        removed with the session (ondelete='cascade'); durable user
+        knowledge lives in mcp.chatbot.user.fact and is NOT touched here.
+
+        Only closed sessions are considered — open ones are closed by the
+        idle cron within the hour, so anything months old is long closed.
+        """
+        retention_days = int(
+            self.env['ir.config_parameter'].sudo().get_param(
+                'mcp_chatbot.transcript_retention_days', 90
+            )
+        )
+        if retention_days <= 0:
+            return
+        cutoff = fields.Datetime.now() - timedelta(days=retention_days)
+        old_sessions = self.search([
+            ('state', '=', 'closed'),
+            ('last_activity', '<', cutoff),
+        ])
+        if old_sessions:
+            count = len(old_sessions)
+            old_sessions.unlink()
+            _logger.info(
+                "retention: deleted %d conversation(s) older than %d days",
+                count, retention_days,
+            )

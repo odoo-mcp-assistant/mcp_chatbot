@@ -817,6 +817,33 @@ body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggesti
     flex-shrink: 0;
 }
 
+/* Warning variant — amber icon for "heads-up" notices (e.g. approaching
+   the daily usage limit), as opposed to the default danger red. */
+.mcp-chatbot-toast.mcp-toast-warning .fa {
+    color: #f5c451;
+}
+
+/* The base toast is click-through; dismissible ones carry an X button,
+   so they must accept pointer events. */
+.mcp-chatbot-toast.mcp-toast-dismissible {
+    pointer-events: auto;
+}
+
+.mcp-toast-close {
+    background: none;
+    border: none;
+    color: #aab1bb;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 0 0 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.mcp-toast-close:hover {
+    color: #ffffff;
+}
+
 .mcp-chatbot-toast.mcp-toast-show {
     opacity: 1;
     transform: translateX(-50%) translateY(0);

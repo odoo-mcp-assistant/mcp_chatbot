@@ -178,6 +178,23 @@ class ResConfigSettings(models.TransientModel):
     )
 
     # ------------------------------------------------------------------ #
+    # Data Retention                                                      #
+    # ------------------------------------------------------------------ #
+    # Transcripts are PII (names, emails, order details), so they must not
+    # live forever: a daily cron deletes closed conversations older than
+    # this many days (messages + rating cascade with the session). Durable
+    # user knowledge is preserved separately in mcp.chatbot.user.fact, so
+    # expiring raw transcripts loses nothing the bot relies on.
+
+    chatbot_transcript_retention_days = fields.Integer(
+        string="Transcript Retention (days)",
+        config_parameter='mcp_chatbot.transcript_retention_days',
+        default=90,
+        help="Closed conversations older than this are deleted daily. "
+             "Set 0 to keep transcripts forever (not recommended).",
+    )
+
+    # ------------------------------------------------------------------ #
     # Onchange: clear model when provider changes                         #
     # ------------------------------------------------------------------ #
 
