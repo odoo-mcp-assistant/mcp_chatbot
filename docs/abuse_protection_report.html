@@ -48,6 +48,13 @@
     margin: 18px 0;
     page-break-inside: avoid;
   }
+  .feature {
+    border: 1px solid #e3e8ee;
+    border-radius: 7px;
+    padding: 2px 16px 12px 16px;
+    margin: 14px 0;
+    page-break-inside: avoid;
+  }
   .tier-head {
     display: flex;
     align-items: baseline;
@@ -64,8 +71,8 @@
     color: #fff;
     white-space: nowrap;
   }
-  .b-must { background: #c0392b; }
-  .b-best { background: #1e8e5a; }
+  .b-done { background: #1e8e5a; }
+  .b-ready { background: #2563ab; }
   .b-opt  { background: #b9770e; }
   .b-skip { background: #7b8794; }
   .tier-title { font-size: 15px; font-weight: 700; color: #11324d; }
@@ -95,188 +102,306 @@
 </head>
 <body>
 
-  <h1>Chatbot Abuse &amp; Cost Protection</h1>
-  <p class="subtitle">A tiered plan for deploying the public AI chat widget safely</p>
-  <p class="meta">Project: <code>mcp_chatbot</code> (Odoo addon + FastAPI sidecar) &nbsp;•&nbsp; Prepared 11 June 2026</p>
+  <h1>Chatbot Security &amp; Cost Protection</h1>
+  <p class="subtitle">How the public AI chat widget protects itself against abuse, floods and runaway costs</p>
+  <p class="meta">Project: <code>mcp_chatbot</code> (Odoo addon + FastAPI chat server) &nbsp;•&nbsp; Updated 12 June 2026</p>
   <hr>
 
   <div class="lead">
-    <b>The core problem in one sentence.</b> The chat widget is public: any visitor &mdash;
-    even one who never logs in &mdash; can send messages, and every message calls a paid AI
-    service that <b>you</b> are billed for. Today there is nothing in the code that limits how
-    many messages a single person (or a script) can send. As shipped, the system trusts users
-    not to abuse it. This report explains, tier by tier, the specific risk and the fix.
+    <b>Why this matters in one sentence.</b> The chat widget is open to every website
+    visitor &mdash; even people who never log in &mdash; and every message they send is
+    processed by a paid AI service, billed to the shop owner. Without protection, one
+    person with a script could flood the bot, run up a large bill, or quietly use it as a
+    free AI service for their own projects. The protections below make sure a real
+    customer never notices anything, while an abuser hits a wall at every step.
   </div>
 
-  <h2>How a message becomes a cost</h2>
+  <h2>The journey of one message (and its checkpoints)</h2>
   <p>
-    When a visitor opens the website, the browser is handed a one-hour access pass (a signed
-    token). With that pass it sends messages straight to the chat server, which calls the AI
-    model (Groq) and any connected tools. <b>You are billed by the volume of text</b> processed.
-    The only checks today are: the message isn&rsquo;t empty, and the bot is switched &ldquo;online&rdquo;.
-    No speed limit, no size limit, no spending limit exists anywhere. Each tier below closes one
-    gap in that chain.
+    When a visitor opens the website, the browser receives a short-lived <b>access pass</b>
+    (a signed token). Every message must carry this pass. From there, each message walks
+    through a series of checkpoints <b>before</b> any money is spent on AI processing:
+  </p>
+  <ul>
+    <li><b>Checkpoint 1 &mdash; valid pass?</b> No valid token, no service. The pass expires after one hour and is renewed automatically for genuine visitors.</li>
+    <li><b>Checkpoint 2 &mdash; is the bot switched on?</b> The shop admin has an online/offline switch; "offline" is enforced on the server, not just hidden in the page.</li>
+    <li><b>Checkpoint 3 &mdash; reasonable size?</b> Messages over 2,000 characters are rejected. Nobody can paste a whole book and make the shop pay to process it.</li>
+    <li><b>Checkpoint 4 &mdash; reasonable speed?</b> At most 1 message every 2 seconds and 20 per minute, per person. A human never notices; a flooding script is stopped at its first burst.</li>
+    <li><b>Checkpoint 5 &mdash; daily allowance left?</b> Each person has a daily AI usage budget. When it is spent, only <i>that person</i> waits until tomorrow &mdash; everyone else chats normally.</li>
+  </ul>
+  <p>
+    Only a message that passes all five checkpoints reaches the AI. Rejected messages cost
+    <b>nothing</b>.
   </p>
 
-  <!-- TIER 0 -->
+  <!-- ============================================================ -->
+  <h2>Tier 0 &mdash; Protections built into our own code</h2>
+
   <div class="tier">
     <div class="tier-head">
-      <span class="badge b-must">TIER 0 · REQUIRED</span>
-      <span class="tier-title">Basic limits inside your own code</span>
+      <span class="badge b-done">IMPLEMENTED</span>
+      <span class="tier-title">1 &middot; Message size limit</span>
     </div>
-
-    <div class="block">
-      <span class="label">Problem it solves</span>
-      <div class="problem">
-        Nothing stops one visitor from sending thousands of messages in a loop, pasting an
-        entire book into a single message, or quietly running up a huge bill over a day. A
-        determined person could even use your bot as a <b>free AI service</b> for their own
-        projects &mdash; on your bill.
-      </div>
+    <div class="block problem">
+      <span class="label">The risk</span>
+      <p>The AI bills by the amount of text it reads. A single message containing a pasted
+      document could cost as much as hundreds of normal questions.</p>
     </div>
-
-    <div class="block">
-      <span class="label">Solution</span>
-      <div class="solution">
-        Three small rules added directly to the chat server:
-        <ul>
-          <li><b>Speed limit (rate limiting).</b> e.g. &ldquo;1 message every few seconds, 30 per
-          conversation.&rdquo; A real person never notices; a flooding script is blocked after the
-          first attempt. A ready-made tool (<code>slowapi</code>) does this in a few lines.</li>
-          <li><b>Maximum message length.</b> Reject anything over, say, 2,000 characters &mdash; so
-          no one can make you pay to process a pasted book. One line of code.</li>
-          <li><b>Daily spending kill-switch.</b> Track usage as it happens; when the day&rsquo;s
-          budget is reached, the bot switches itself off until tomorrow. This reuses the
-          on/off &ldquo;status&rdquo; switch the project already has.</li>
-        </ul>
-      </div>
+    <div class="block solution">
+      <span class="label">What we built</span>
+      <p>A hard cap of 2,000 characters per message, enforced twice: the chat box itself
+      stops accepting text at the limit (so honest users get instant feedback), and the
+      server rejects oversized messages anyway (so the limit can't be bypassed by a script
+      talking to the server directly).</p>
     </div>
-
-    <p class="analogy">Coffee-machine view: the machine pours one cup at a time, refuses buckets,
-      and shuts off once the day&rsquo;s coins hit a set amount.</p>
-    <p class="effort"><b>Effort:</b> a few hours. <b>Verdict:</b> do not deploy without this &mdash;
-      it stops the large majority of abuse on its own.</p>
+    <p class="analogy">The coffee machine pours cups, not buckets.</p>
   </div>
 
-  <!-- TIER 1 -->
   <div class="tier">
     <div class="tier-head">
-      <span class="badge b-best">TIER 1 · BEST VALUE</span>
-      <span class="tier-title">A bouncer at the edge (Cloudflare)</span>
+      <span class="badge b-done">IMPLEMENTED</span>
+      <span class="tier-title">2 &middot; Speed limit (rate limiting)</span>
     </div>
-
-    <div class="block">
-      <span class="label">Problem it solves</span>
-      <div class="problem">
-        Even with code-level limits, attack traffic still reaches your server before it gets
-        rejected &mdash; using up your server&rsquo;s capacity, and in some cases costing money
-        before the limit kicks in. Large automated floods can also simply overwhelm the machine.
-      </div>
+    <div class="block problem">
+      <span class="label">The risk</span>
+      <p>A simple script can send hundreds of messages per minute &mdash; each one a paid AI
+      call. A human conversation never looks like that.</p>
     </div>
-
-    <div class="block">
-      <span class="label">Solution</span>
-      <div class="solution">
-        Place a free service (<b>Cloudflare</b>) <b>in front of</b> your server. All internet
-        traffic hits Cloudflare first; it recognizes bots, attack scripts, and floods and blocks
-        them <b>before they ever reach your server</b> &mdash; meaning before they cost you anything.
-        Genuine visitors pass straight through and notice nothing. This is mostly configuration,
-        not programming.
-      </div>
+    <div class="block solution">
+      <span class="label">What we built</span>
+      <p>Two speed ceilings on the server, applied per person: at most <b>1 message every
+      2 seconds</b> (stops rapid-fire bursts) and <b>20 messages per minute</b> (caps
+      sustained volume). Logged-in users are identified by their account; visitors are
+      identified by their network address. Tripping a ceiling returns a polite
+      &ldquo;you're sending messages too quickly&rdquo; notice in the chat &mdash; and the
+      blocked requests cost nothing.</p>
     </div>
-
-    <p class="analogy">Coffee-machine view: a bouncer on the sidewalk stops obvious troublemakers
-      and robots before they touch the button; real customers walk right past.</p>
-    <p class="effort"><b>Effort:</b> very low (mostly setup). <b>Verdict:</b> biggest protection
-      for the least work &mdash; if you do only one thing, do this.</p>
+    <p class="analogy">One cup at a time; the queue moves at human speed.</p>
   </div>
 
-  <!-- TIER 2 -->
   <div class="tier">
     <div class="tier-head">
-      <span class="badge b-opt">TIER 2 · IF NEEDED</span>
-      <span class="tier-title">A quiet &ldquo;prove you&rsquo;re human&rdquo; check</span>
+      <span class="badge b-done">IMPLEMENTED</span>
+      <span class="tier-title">3 &middot; Personal daily budgets (the heart of the system)</span>
     </div>
-
-    <div class="block">
-      <span class="label">Problem it solves</span>
-      <div class="problem">
-        Sophisticated bots can imitate real browsers and slip past the limits above, especially
-        when targeting the anonymous (not-logged-in) path where there is no account to hold them
-        accountable.
-      </div>
+    <div class="block problem">
+      <span class="label">The risk</span>
+      <p>Even at polite speed, someone chatting all day &mdash; or using the bot as a free
+      AI service &mdash; can burn through real money. And a single shared &ldquo;kill
+      switch&rdquo; would be worse: one abuser reaching it would shut the bot down for
+      every genuine customer too.</p>
     </div>
-
-    <div class="block">
-      <span class="label">Solution</span>
-      <div class="solution">
-        Before a <b>stranger</b> sends their first message, require a quick &ldquo;are you a
-        robot?&rdquo; check. The modern version (<b>Cloudflare Turnstile</b>) is usually
-        <b>invisible</b> &mdash; a real person sees nothing and just chats; a bot is silently
-        stopped. It is not the old &ldquo;click all the traffic lights&rdquo; puzzle.
-      </div>
+    <div class="block solution">
+      <span class="label">What we built</span>
+      <p>Every person gets their <b>own</b> daily allowance of AI usage, measured in the
+      same units the AI provider bills (tokens). When one person spends theirs, only they
+      are paused until the next day &mdash; nobody else is affected.</p>
+      <ul>
+        <li><b>Logged-in customers:</b> 500,000 tokens per day (roughly several hundred long answers &mdash; far more than any real customer uses).</li>
+        <li><b>Anonymous visitors:</b> 300,000 tokens per day, counted per network address.</li>
+        <li><b>Identity upgrade bonus:</b> a visitor who verifies their email in the chat (for example to place an order) earns an extra 200,000 &mdash; same level as a logged-in customer.</li>
+        <li><b>Checkout protection:</b> the moment a visitor starts email verification, a small extra grace (30,000) is granted &mdash; so someone about to complete an order is never cut off mid-purchase. A sale is never lost to the limit.</li>
+      </ul>
+      <p>The experience is designed to feel fair, never sudden:</p>
+      <ul>
+        <li>At <b>90%</b> of the allowance, a gentle amber notice appears once: <i>&ldquo;You're approaching today's usage limit.&rdquo;</i></li>
+        <li>An answer that is already being written is <b>never cut off mid-sentence</b> &mdash; the visitor always gets their reply; the pause only applies from the next message.</li>
+        <li>When the allowance is spent, a clear notice explains it: <i>&ldquo;You've reached today's usage limit. Please try again tomorrow.&rdquo;</i></li>
+      </ul>
+      <p>For the shop admin, everything is visible and adjustable in Odoo Settings: a
+      master on/off switch for the limits, the budget amounts, the bonus and the grace.
+      Every person's daily consumption is recorded and browsable in the backend (Token
+      Usage records) &mdash; and the recording continues even when limits are switched
+      off, so decisions are always based on real numbers.</p>
     </div>
-
-    <p class="analogy">Coffee-machine view: a small turnstile a person steps through without
-      thinking, but a robot arm can&rsquo;t get past.</p>
-    <p class="effort"><b>Effort:</b> low&ndash;medium. <b>Verdict:</b> add only if abuse continues
-      after Tiers 0 and 1 &mdash; don&rsquo;t add friction for real visitors before you need to.</p>
+    <p class="analogy">Every customer has their own daily coffee card; when one card is empty, the machine keeps serving everyone else.</p>
   </div>
 
-  <!-- TIER 3 -->
   <div class="tier">
     <div class="tier-head">
-      <span class="badge b-skip">TIER 3 · SKIP FOR NOW</span>
-      <span class="tier-title">Content filtering &amp; advanced quotas</span>
+      <span class="badge b-done">IMPLEMENTED</span>
+      <span class="tier-title">4 &middot; Master switch, enforced for real</span>
     </div>
-
-    <div class="block">
-      <span class="label">Problem it solves</span>
-      <div class="problem">
-        People may try to trick the bot into saying offensive things under your brand
-        (&ldquo;jailbreaking&rdquo;), or you may eventually want fine-grained per-account usage
-        budgets.
-      </div>
+    <div class="block problem">
+      <span class="label">The risk</span>
+      <p>An &ldquo;offline&rdquo; switch that only hides the chat window is decoration: a
+      script talking directly to the server would still be answered &mdash; and billed.</p>
     </div>
-
-    <div class="block">
-      <span class="label">Solution</span>
-      <div class="solution">
-        AI content-moderation filters on the bot&rsquo;s output, plus per-user quotas. Real, but
-        <b>premature for a first launch</b> &mdash; solve the money and flooding problems first
-        and revisit this only if it becomes a real issue.
-      </div>
+    <div class="block solution">
+      <span class="label">What we built</span>
+      <p>The online/offline status is enforced <b>on the server</b>. When the bot is
+      offline, no session is created, nothing is stored, and no AI call is made &mdash;
+      regardless of how the request arrives. The widget also shows an Offline badge so
+      genuine visitors aren't confused.</p>
     </div>
-
-    <p class="effort"><b>Effort:</b> high. <b>Verdict:</b> not part of v1.</p>
+    <p class="analogy">Unplugging the machine, not just hanging a "closed" sign on it.</p>
   </div>
 
+  <div class="tier">
+    <div class="tier-head">
+      <span class="badge b-done">IMPLEMENTED</span>
+      <span class="tier-title">5 &middot; Conversations get a shelf life (privacy)</span>
+    </div>
+    <div class="block problem">
+      <span class="label">The risk</span>
+      <p>Chat transcripts contain personal information &mdash; names, emails, order
+      details. Keeping them forever grows the legal exposure (privacy laws such as GDPR
+      require a defined retention period) and means a database breach would leak the
+      shop's entire chat history since launch.</p>
+    </div>
+    <div class="block solution">
+      <span class="label">What we built</span>
+      <p>An automatic daily cleanup deletes closed conversations older than <b>90 days</b>
+      (configurable in Settings). What the bot has learned about each customer &mdash;
+      preferences, allergies, profession &mdash; is kept separately as short, editable
+      facts, so the bot stays personal while the raw transcripts expire.</p>
+    </div>
+    <p class="analogy">The barista remembers you take oat milk &mdash; not every word of every chat you've ever had.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>Tier 1 &mdash; A bouncer at the edge (Cloudflare)</h2>
+
+  <div class="tier">
+    <div class="tier-head">
+      <span class="badge b-ready">CODE READY &mdash; ENABLED AT DEPLOYMENT</span>
+      <span class="tier-title">6 &middot; Blocking attacks before they reach the server</span>
+    </div>
+    <div class="block problem">
+      <span class="label">The risk &mdash; two problems Tier 0 cannot solve alone</span>
+      <p><b>(a)</b> All the checkpoints above live <i>inside</i> our server. To say
+      &ldquo;no&rdquo; to a request, the server must first receive it &mdash; spending
+      connections, processing power and bandwidth. A large enough automated flood can
+      overwhelm the machine even though every request is being rejected.</p>
+      <p><b>(b)</b> The per-visitor limits identify anonymous visitors by their network
+      address (IP). But on the open internet, the header that carries that address is just
+      text the sender can type. An attacker talking to the server directly could fake a
+      fresh address on every request &mdash; appearing as thousands of &ldquo;new
+      visitors&rdquo; and slipping past the per-visitor limits.</p>
+    </div>
+    <div class="block solution">
+      <span class="label">What we built</span>
+      <p><b>Cloudflare</b> (free plan) is placed in front of the server. All traffic hits
+      Cloudflare first: known bots, attack scripts and floods are dropped on
+      <i>Cloudflare's</i> machines before they ever reach &mdash; or cost &mdash; anything
+      on ours. Genuine visitors pass through and notice nothing.</p>
+      <p>It also fixes the identity problem: Cloudflare <i>observes</i> each visitor's
+      real address at the network level and stamps it onto the request &mdash; a
+      measurement, not a claim. Our server has been updated to <b>only believe address
+      information that arrives from machines we trust</b> (our own proxy, Cloudflare);
+      anything a client types itself is ignored. Faked-address tricks are verified blocked
+      by automated tests.</p>
+      <ul>
+        <li><b>In the code (done):</b> trusted-proxy address resolution, Cloudflare header support, fail-safe defaults.</li>
+        <li><b>At deployment (a ~30-minute checklist, see <code>docs/cloudflare_setup.md</code>):</b> point the domain at Cloudflare, enable bot protection and an edge speed limit, and lock the server's firewall so traffic <i>cannot</i> go around the bouncer.</li>
+      </ul>
+    </div>
+    <p class="analogy">A bouncer on the sidewalk stops troublemakers before they touch the machine &mdash; and he's the only one allowed to write names on the guest list.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>Planned next (added only if real abuse appears)</h2>
+
+  <div class="tier">
+    <div class="tier-head">
+      <span class="badge b-opt">PLANNED &mdash; IF NEEDED</span>
+      <span class="tier-title">7 &middot; A quiet &ldquo;prove you're human&rdquo; check</span>
+    </div>
+    <p>Sophisticated bots can imitate real browsers. If abuse continues after Tiers 0
+    and 1, a modern invisible human-check (Cloudflare Turnstile) can be added before a
+    stranger's first message &mdash; a real person sees nothing and just chats; a bot is
+    silently stopped. Deliberately not added yet: no friction for real visitors before
+    it's proven necessary.</p>
+  </div>
+
+  <div class="tier">
+    <div class="tier-head">
+      <span class="badge b-skip">PLANNED &mdash; LATER</span>
+      <span class="tier-title">8 &middot; Content filtering on the bot's answers</span>
+    </div>
+    <p>Protection against visitors trying to trick the bot into saying something
+    off-brand (&ldquo;jailbreaking&rdquo;). Real, but a reputation concern rather than a
+    cost concern &mdash; scheduled after the money and flooding protections have proven
+    themselves in production.</p>
+  </div>
+
+  <!-- ============================================================ -->
   <h2>Summary at a glance</h2>
   <table>
-    <thead>
-      <tr><th style="width:14%">Tier</th><th style="width:30%">What it is</th><th style="width:30%">Main problem it solves</th><th style="width:12%">Effort</th><th style="width:14%">Verdict</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><b>0</b></td><td>Speed limit, message-size cap, daily spend kill-switch (in your code)</td><td>One person flooding messages or running up the bill</td><td>Few hours</td><td>Required before launch</td></tr>
-      <tr><td><b>1</b></td><td>Cloudflare bouncer in front of the server</td><td>Automated floods reaching your server at all</td><td>Mostly config</td><td>Best value &mdash; do this</td></tr>
-      <tr><td><b>2</b></td><td>Invisible &ldquo;are you human?&rdquo; check for strangers</td><td>Advanced bots imitating real browsers</td><td>Low&ndash;medium</td><td>Only if abuse continues</td></tr>
-      <tr><td><b>3</b></td><td>Content filters &amp; per-account quotas</td><td>Brand-damaging jailbreaks; fine-grained budgets</td><td>High</td><td>Skip for v1</td></tr>
-    </tbody>
+    <tr>
+      <th style="width:24%">Protection</th>
+      <th>What it stops</th>
+      <th style="width:16%">Status</th>
+    </tr>
+    <tr>
+      <td>Access pass (signed token)</td>
+      <td>Anonymous scripts calling the chat server without going through the website</td>
+      <td>✅ Implemented</td>
+    </tr>
+    <tr>
+      <td>Message size limit (2,000 chars)</td>
+      <td>Paying to process pasted documents</td>
+      <td>✅ Implemented</td>
+    </tr>
+    <tr>
+      <td>Speed limit (1 / 2s, 20 / min)</td>
+      <td>Message floods from scripts</td>
+      <td>✅ Implemented</td>
+    </tr>
+    <tr>
+      <td>Personal daily budgets<br>(500k / 300k tokens + bonuses)</td>
+      <td>One person running up the bill or freeloading on the AI &mdash; without ever blocking anyone else, and without ever losing a sale mid-checkout</td>
+      <td>✅ Implemented</td>
+    </tr>
+    <tr>
+      <td>90% early warning + fair blocking</td>
+      <td>Surprise cut-offs; answers interrupted mid-sentence</td>
+      <td>✅ Implemented</td>
+    </tr>
+    <tr>
+      <td>Server-enforced offline switch</td>
+      <td>The bot answering (and billing) while &ldquo;switched off&rdquo;</td>
+      <td>✅ Implemented</td>
+    </tr>
+    <tr>
+      <td>90-day conversation cleanup</td>
+      <td>Unbounded privacy/legal exposure; worst-case breach damage</td>
+      <td>✅ Implemented</td>
+    </tr>
+    <tr>
+      <td>Trusted address resolution</td>
+      <td>Faking network addresses to dodge the per-visitor limits</td>
+      <td>✅ Implemented</td>
+    </tr>
+    <tr>
+      <td>Cloudflare edge protection</td>
+      <td>Floods and bots reaching the server at all</td>
+      <td>🔵 At deployment</td>
+    </tr>
+    <tr>
+      <td>Invisible human check (Turnstile)</td>
+      <td>Advanced bots imitating real browsers</td>
+      <td>🟠 If needed</td>
+    </tr>
+    <tr>
+      <td>Answer content filtering</td>
+      <td>&ldquo;Jailbreak&rdquo; attempts against the brand voice</td>
+      <td>⚪ Later</td>
+    </tr>
   </table>
 
-  <h2>Bottom line</h2>
   <p>
-    Real products do <b>not</b> rely on users&rsquo; goodwill &mdash; that is simply where this
-    code stands today. The practical path is to put up two cheap fences before going live:
-    <b>Tier 0</b> (limits in the code) and <b>Tier 1</b> (the free Cloudflare bouncer). Together
-    they handle the overwhelming majority of abuse. Tiers 2 and 3 are held in reserve and added
-    only if real-world abuse demands them.
+    <b>The design principle behind all of it:</b> every limit targets <i>one person's</i>
+    behaviour, never the whole service &mdash; an abuser gets stopped, a customer never
+    notices, and a visitor in the middle of buying something is always allowed to finish.
   </p>
 
   <p class="footer-note">
-    Related hardening note (outside the tiers): keep the AI provider key secret and rotate it if
-    it is ever exposed &mdash; a leaked key is the same &ldquo;unlimited spend&rdquo; risk through a
-    different door.
+    Technical references: rate limiting &amp; budgets enforced in the FastAPI chat server
+    (<code>slowapi</code>, per-identity daily rows in <code>mcp.chatbot.usage</code>);
+    budgets, bonuses and retention configurable in Odoo Settings &rarr; MCP Chatbot;
+    Cloudflare deployment checklist in <code>docs/cloudflare_setup.md</code>.
+    All protections verified by automated tests on the <code>add_security</code> branch.
   </p>
 
 </body>
