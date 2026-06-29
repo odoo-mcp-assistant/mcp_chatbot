@@ -113,6 +113,15 @@
             }
         );
 
+        // 12b. Images ![alt](url) — MUST run before links so the leading "!"
+        // isn't left behind by the link rule. Only absolute http(s) URLs are
+        // allowed as src (no javascript: scheme), and alt is already HTML-
+        // escaped at step 1, so this stays XSS-safe.
+        escaped = escaped.replace(
+            /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g,
+            '<img class="mcp-md-img" src="$2" alt="$1" loading="lazy">'
+        );
+
         // 13. Links [text](url)
         escaped = escaped.replace(
             /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,

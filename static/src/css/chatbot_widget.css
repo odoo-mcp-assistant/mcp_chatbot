@@ -1280,6 +1280,20 @@ body.mcp-chatbot-expanded .mcp-chatbot-window.mcp-is-empty .mcp-chatbot-suggesti
     color: #3a6e8a;
 }
 
+/* Product images embedded in assistant replies (![name](url)).
+   Capped so they sit neatly in the bubble instead of bleeding full-width. */
+.mcp-assistant-text .mcp-md-img {
+    display: block;
+    max-width: 180px;
+    width: 100%;
+    height: auto;
+    margin: 8px 0;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    object-fit: contain;
+}
+
 /* ── Hide expand button on tablets, iPads, and phones (≤1024px) ─
    Expanding to 50% makes no sense at narrow widths where the
    widget already goes full-screen. Also cancel any active
